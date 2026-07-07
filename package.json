@@ -1,0 +1,23 @@
+{
+  "name": "ai-portfolio-advisor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "AI-powered multi-tenant portfolio advisory SaaS with read-only Zerodha Kite MCP integration.",
+  "workspaces": [
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "lint:web": "npm --workspace apps/web run lint",
+    "test:web": "npm --workspace apps/web run test",
+    "typecheck": "npm --workspace apps/web run typecheck && npm --workspace packages/shared run typecheck",
+    "api:test": "docker compose run --rm api pytest",
+    "dev": "docker compose up --build"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  }
+}
