@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -85,7 +85,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(session.user);
   }
 
-  async function submitAuth(path: string, payload: Record<string, string>) {
+  const submitAuth = useCallback(async (path: string, payload: Record<string, string>) => {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -96,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw new Error(typeof body?.detail === "string" ? body.detail : "Authentication failed.");
     }
     await applySession((await response.json()) as AuthSession);
-  }
+  }, []);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -118,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
       }
     }),
-    [isLoading, token, user]
+    [isLoading, submitAuth, token, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
