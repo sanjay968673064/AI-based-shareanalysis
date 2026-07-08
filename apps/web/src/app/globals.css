@@ -211,7 +211,7 @@ textarea {
 }
 
 .ai-command-core {
-  min-height: 560px;
+  min-height: 460px;
 }
 
 .ai-command-core::before,
