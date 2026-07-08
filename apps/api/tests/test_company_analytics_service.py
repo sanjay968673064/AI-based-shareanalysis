@@ -1,4 +1,5 @@
 from src.schemas.analytics import AnalyticsMetricRead, CompanyAnalyticsRead, CompanyNewsRead
+from src.services.intelligence_providers import MarketSnapshot
 from src.services.company_analytics_service import CompanyAnalyticsService, MODEL_VERSION
 
 
@@ -74,3 +75,21 @@ def test_company_analytics_quality_penalizes_missing_data() -> None:
     quality = service._quality_score([company], checks)
 
     assert quality < 60
+
+
+def test_company_analytics_withholds_unverified_live_price() -> None:
+    service = CompanyAnalyticsService(portfolio_repo=None)
+
+    company = service._apply_verified_market_snapshot(
+        _company(),
+        MarketSnapshot(
+            symbol="INFY",
+            provider_symbol="INFY.NS",
+            source="consensus:yahoo+alpha_vantage",
+            warnings=["Rejected consensus last price for INFY."],
+        ),
+    )
+
+    assert company.last_price is None
+    assert company.day_change_pct is None
+    assert any("Withheld live price" in note for note in company.source_notes)

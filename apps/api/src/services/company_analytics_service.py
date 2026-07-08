@@ -17,6 +17,7 @@ from src.schemas.analytics import (
     DecisionSignalRead,
     PortfolioAnalyticsRead,
 )
+from src.services.intelligence_providers import MarketDataProvider, MarketSnapshot
 
 
 _CACHE: dict[str, PortfolioAnalyticsRead] = {}
@@ -29,6 +30,7 @@ class CompanyAnalyticsService:
         self._portfolio_repo = portfolio_repo
         self._timeout = max(6.0, settings.market_data_timeout_seconds)
         self._max_concurrency = max(1, settings.market_data_max_concurrency)
+        self._market_data = MarketDataProvider()
 
     async def analyze(self, context: UserContext, force_refresh: bool = False) -> PortfolioAnalyticsRead:
         analysis_date = self._analysis_date()
@@ -44,12 +46,17 @@ class CompanyAnalyticsService:
             companies = await asyncio.gather(
                 *[self._analyze_company(client, semaphore, holding) for holding in holdings]
             )
+        market_snapshots = await self._market_data.fetch_many(holdings)
+        companies = [
+            self._apply_verified_market_snapshot(company, market_snapshots.get(company.symbol))
+            for company in companies
+        ]
 
         warnings = [
             note
             for company in companies
             for note in company.source_notes
-            if note.lower().startswith(("could not", "missing", "limited", "fundamental"))
+            if note.lower().startswith(("could not", "missing", "limited", "fundamental", "consensus", "rejected", "withheld"))
         ]
         sanity_checks = self._sanity_checks(companies, warnings)
         quality = self._quality_score(companies, sanity_checks)
@@ -226,6 +233,49 @@ class CompanyAnalyticsService:
             ],
             news=self._news(search),
             source_notes=source_notes,
+        )
+
+    def _apply_verified_market_snapshot(
+        self,
+        company: CompanyAnalyticsRead,
+        snapshot: MarketSnapshot | None,
+    ) -> CompanyAnalyticsRead:
+        if snapshot is None:
+            return company.model_copy(
+                update={
+                    "last_price": None,
+                    "day_change_pct": None,
+                    "source_notes": [
+                        *company.source_notes,
+                        "Withheld live price: no consensus market snapshot was available.",
+                    ],
+                }
+            )
+        source_notes = [
+            *company.source_notes,
+            f"Validated market snapshot source: {snapshot.source}.",
+            *snapshot.warnings,
+        ]
+        if snapshot.last_price is None:
+            return company.model_copy(
+                update={
+                    "last_price": None,
+                    "day_change_pct": None,
+                    "source_notes": [
+                        *source_notes,
+                        "Withheld live price: market data sources did not pass consensus validation.",
+                    ],
+                }
+            )
+        day_change_pct = None
+        if snapshot.previous_close and snapshot.previous_close > 0:
+            day_change_pct = (snapshot.last_price - snapshot.previous_close) / snapshot.previous_close * 100
+        return company.model_copy(
+            update={
+                "last_price": snapshot.last_price,
+                "day_change_pct": day_change_pct,
+                "source_notes": source_notes,
+            }
         )
 
     def _provider_symbol(self, holding: dict) -> str:

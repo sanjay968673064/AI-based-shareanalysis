@@ -21,9 +21,10 @@ class Settings(BaseSettings):
     zerodha_kite_api_key: str = ""
     zerodha_kite_api_secret: str = ""
     zerodha_redirect_url: str = "http://localhost:8000/api/v1/zerodha/callback"
-    market_data_provider: str = "yahoo"
+    market_data_provider: str = "multi"
     market_data_timeout_seconds: float = 6.0
     market_data_max_concurrency: int = 8
+    market_data_consensus_price_tolerance_pct: float = 3.0
     analytics_daily_refresh_enabled: bool = True
     analytics_daily_refresh_check_seconds: int = 21600
     openai_api_key: str = ""
