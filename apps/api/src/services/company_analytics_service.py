@@ -25,6 +25,16 @@ from src.services.intelligence_providers import MarketDataProvider, MarketSnapsh
 _CACHE: dict[str, PortfolioAnalyticsRead] = {}
 MODEL_VERSION = "fundamental-signal-engine-2026.07"
 MARKET_TZ = ZoneInfo("Asia/Kolkata")
+SCORING_WEIGHTS = {
+    "fundamental": 0.40,
+    "technical": 0.20,
+    "valuation": 0.10,
+    "risk": 0.10,
+    "governance": 0.05,
+    "sector": 0.05,
+    "news": 0.05,
+    "sentiment": 0.05,
+}
 
 
 class CompanyAnalyticsService:
@@ -191,8 +201,27 @@ class CompanyAnalyticsService:
             fcf_margin, latest.get("annualFreeCashFlow"), operating_cashflow_to_debt
         )
         valuation_score = self._score_valuation(price_position, one_year_price_return)
-        overall = round(balance_score * 0.3 + growth_score * 0.25 + cash_flow_score * 0.25 + valuation_score * 0.2)
-        recommendation = self._recommendation(overall, balance_score, growth_score, cash_flow_score, valuation_score)
+        fundamental_score = self._score_fundamental(balance_score, growth_score, cash_flow_score, roe)
+        technical_score = self._score_technical(price_position, one_year_price_return, realized_volatility)
+        risk_score = self._score_risk(realized_volatility, debt_to_equity, liabilities_to_assets)
+        governance_score = self._score_governance(quote)
+        sector_score = self._score_sector(quote.get("sector") or holding.get("sector"), one_year_price_return)
+        news_items = self._news(search)
+        news_score = self._score_news(news_items)
+        sentiment_score = self._score_sentiment(news_items)
+        overall = self._weighted_final_score(
+            fundamental=fundamental_score,
+            technical=technical_score,
+            valuation=valuation_score,
+            risk=risk_score,
+            governance=governance_score,
+            sector=sector_score,
+            news=news_score,
+            sentiment=sentiment_score,
+        )
+        recommendation = self._recommendation(overall, risk_score)
+        last_price = self._as_float(meta.get("regularMarketPrice"))
+        valuation_profile = self._valuation_profile(last_price, price_position, valuation_score, overall)
 
         strengths, concerns = self._strengths_and_concerns(
             revenue_growth=revenue_growth,
@@ -221,7 +250,7 @@ class CompanyAnalyticsService:
             sector=quote.get("sector") or holding.get("sector"),
             industry=quote.get("industry"),
             currency=meta.get("currency"),
-            last_price=self._as_float(meta.get("regularMarketPrice")),
+            last_price=last_price,
             day_change_pct=self._day_change_pct(meta),
             fifty_two_week_low=self._as_float(meta.get("fiftyTwoWeekLow")),
             fifty_two_week_high=self._as_float(meta.get("fiftyTwoWeekHigh")),
@@ -231,10 +260,44 @@ class CompanyAnalyticsService:
             growth_score=growth_score,
             cash_flow_score=cash_flow_score,
             valuation_score=valuation_score,
+            fundamental_score=fundamental_score,
+            technical_score=technical_score,
+            governance_score=governance_score,
+            risk_score=risk_score,
+            sector_score=sector_score,
+            news_score=news_score,
+            sentiment_score=sentiment_score,
+            final_score=int(overall),
+            confidence=self._confidence(overall, risk_score, news_score, sentiment_score, series),
+            investment_horizon=self._investment_horizon(recommendation, technical_score, risk_score),
+            intrinsic_value=valuation_profile["intrinsic_value"],
+            fair_value=valuation_profile["fair_value"],
+            expected_upside=valuation_profile["expected_upside"],
+            stop_loss=valuation_profile["stop_loss"],
+            target1=valuation_profile["target1"],
+            target2=valuation_profile["target2"],
+            target3=valuation_profile["target3"],
             recommendation=recommendation,
             planning=self._planning(recommendation, holding["symbol"], strengths, concerns),
             strengths=strengths,
             concerns=concerns,
+            weaknesses=concerns,
+            risks=self._risk_factors(risk_score, valuation_score, realized_volatility, concerns),
+            catalysts=self._catalysts(news_items, strengths),
+            explanation=self._explanation(
+                symbol=holding["symbol"],
+                final_score=overall,
+                recommendation=recommendation,
+                fundamental_score=fundamental_score,
+                technical_score=technical_score,
+                valuation_score=valuation_score,
+                risk_score=risk_score,
+                governance_score=governance_score,
+                sector_score=sector_score,
+                news_score=news_score,
+                sentiment_score=sentiment_score,
+            ),
+            scoring_weights=SCORING_WEIGHTS,
             financials=[
                 self._metric("Revenue growth", revenue_growth, percent=True),
                 self._metric("Net income growth", net_income_growth, percent=True),
@@ -248,7 +311,7 @@ class CompanyAnalyticsService:
                 self._metric("1Y price trend", one_year_price_return, percent=True),
                 self._metric("Realized volatility", realized_volatility, percent=True),
             ],
-            news=self._news(search),
+            news=news_items,
             source_notes=source_notes,
         )
 
@@ -448,27 +511,237 @@ class CompanyAnalyticsService:
             concerns.append(negative)
 
     def _planning(self, recommendation: str, symbol: str, strengths: list[str], concerns: list[str]) -> str:
-        if recommendation in {"Build", "Accumulate"}:
+        if recommendation in {"Strong Conviction Buy", "Strong Buy", "Buy", "Accumulate"}:
             return f"For {symbol}, plan staged accumulation only on valuation comfort and stable market trend; keep position sizing below the portfolio risk band."
         if recommendation == "Hold":
             return f"For {symbol}, maintain exposure and review after the next earnings/news trigger; add only if strengths remain intact."
+        if recommendation == "Reduce":
+            return f"For {symbol}, avoid fresh buying and consider reducing oversized exposure if concerns persist."
         return f"For {symbol}, avoid fresh buying until concerns improve; prepare a trim or thesis-review plan if weakness persists."
+
+    def _score_fundamental(
+        self,
+        balance_score: int,
+        growth_score: int,
+        cash_flow_score: int,
+        roe: float | None,
+    ) -> int:
+        score = round(balance_score * 0.30 + growth_score * 0.30 + cash_flow_score * 0.30 + 50 * 0.10)
+        if roe is not None:
+            score += 8 if roe >= 0.18 else 3 if roe >= 0.10 else -8 if roe < 0 else 0
+        return int(max(0, min(100, score)))
+
+    def _score_technical(
+        self,
+        price_position: float | None,
+        one_year_price_return: float | None,
+        realized_volatility: float | None,
+    ) -> int:
+        score = 50
+        if one_year_price_return is None:
+            score -= 8
+        elif one_year_price_return > 0.25:
+            score += 24
+        elif one_year_price_return > 0.08:
+            score += 12
+        elif one_year_price_return < -0.18:
+            score -= 18
+        if price_position is not None:
+            score += 10 if 0.35 <= price_position <= 0.82 else -8 if price_position > 0.92 else 2
+        if realized_volatility is not None and realized_volatility > 0.55:
+            score -= 12
+        return int(max(0, min(100, score)))
+
+    def _score_risk(
+        self,
+        realized_volatility: float | None,
+        debt_to_equity: float | None,
+        liabilities_to_assets: float | None,
+    ) -> int:
+        score = 68
+        if realized_volatility is None:
+            score -= 8
+        elif realized_volatility > 0.65:
+            score -= 25
+        elif realized_volatility > 0.42:
+            score -= 10
+        elif realized_volatility < 0.24:
+            score += 8
+        if debt_to_equity is not None:
+            score += 8 if debt_to_equity < 0.4 else -16 if debt_to_equity > 1.2 else 0
+        if liabilities_to_assets is not None and liabilities_to_assets > 0.75:
+            score -= 12
+        return int(max(0, min(100, score)))
+
+    def _score_governance(self, quote: dict) -> int:
+        if quote.get("quoteType") == "EQUITY":
+            return 58
+        return 50
+
+    def _score_sector(self, sector: str | None, one_year_price_return: float | None) -> int:
+        score = 54 if sector else 46
+        if one_year_price_return is not None:
+            score += 8 if one_year_price_return > 0.12 else -6 if one_year_price_return < -0.12 else 0
+        return int(max(0, min(100, score)))
+
+    def _score_news(self, news_items: list[CompanyNewsRead]) -> int:
+        return int(max(0, min(100, 48 + min(len(news_items), 6) * 6)))
+
+    def _score_sentiment(self, news_items: list[CompanyNewsRead]) -> int:
+        positive_words = ("beats", "growth", "profit", "wins", "upgrade", "record", "expands", "surges")
+        negative_words = ("loss", "falls", "probe", "downgrade", "fraud", "default", "decline", "misses")
+        score = 50
+        for item in news_items[:6]:
+            title = item.title.lower()
+            if any(word in title for word in positive_words):
+                score += 7
+            if any(word in title for word in negative_words):
+                score -= 9
+        return int(max(0, min(100, score)))
+
+    def _weighted_final_score(
+        self,
+        *,
+        fundamental: int,
+        technical: int,
+        valuation: int,
+        risk: int,
+        governance: int,
+        sector: int,
+        news: int,
+        sentiment: int,
+    ) -> int:
+        return round(
+            fundamental * SCORING_WEIGHTS["fundamental"]
+            + technical * SCORING_WEIGHTS["technical"]
+            + valuation * SCORING_WEIGHTS["valuation"]
+            + risk * SCORING_WEIGHTS["risk"]
+            + governance * SCORING_WEIGHTS["governance"]
+            + sector * SCORING_WEIGHTS["sector"]
+            + news * SCORING_WEIGHTS["news"]
+            + sentiment * SCORING_WEIGHTS["sentiment"]
+        )
+
+    def _valuation_profile(
+        self,
+        last_price: float | None,
+        price_position: float | None,
+        valuation_score: int,
+        final_score: int,
+    ) -> dict[str, float | None]:
+        if last_price is None or last_price <= 0:
+            return {
+                "intrinsic_value": None,
+                "fair_value": None,
+                "expected_upside": None,
+                "stop_loss": None,
+                "target1": None,
+                "target2": None,
+                "target3": None,
+            }
+        valuation_discount = (valuation_score - 50) / 250
+        quality_premium = (final_score - 60) / 300
+        if price_position is not None and price_position > 0.88:
+            valuation_discount -= 0.06
+        fair_value = round(last_price * (1 + valuation_discount), 2)
+        intrinsic_value = round(last_price * (1 + valuation_discount + quality_premium), 2)
+        upside = round((intrinsic_value - last_price) / last_price * 100, 2)
+        stop_loss = round(last_price * 0.92, 2)
+        return {
+            "intrinsic_value": intrinsic_value,
+            "fair_value": fair_value,
+            "expected_upside": upside,
+            "stop_loss": stop_loss,
+            "target1": round(last_price * 1.08, 2),
+            "target2": round(last_price * 1.16, 2),
+            "target3": round(max(intrinsic_value, last_price * 1.24), 2),
+        }
+
+    def _confidence(
+        self,
+        final_score: int,
+        risk_score: int,
+        news_score: int,
+        sentiment_score: int,
+        series: dict[str, list[float]],
+    ) -> int:
+        data_bonus = min(18, len(series) * 2)
+        score = final_score * 0.55 + risk_score * 0.18 + news_score * 0.12 + sentiment_score * 0.10 + data_bonus
+        return int(max(20, min(96, round(score))))
+
+    def _investment_horizon(self, recommendation: str, technical_score: int, risk_score: int) -> str:
+        if recommendation in {"Strong Conviction Buy", "Strong Buy", "Buy"} and technical_score >= 65 and risk_score >= 55:
+            return "6-18 months with quarterly thesis review"
+        if recommendation in {"Accumulate", "Hold"}:
+            return "3-12 months; review after earnings, valuation change, or trend break"
+        return "Near-term risk review; avoid adding until score improves"
+
+    def _risk_factors(
+        self,
+        risk_score: int,
+        valuation_score: int,
+        realized_volatility: float | None,
+        concerns: list[str],
+    ) -> list[str]:
+        risks = list(concerns[:3])
+        if risk_score < 45:
+            risks.append("Composite market/business risk score is weak.")
+        if valuation_score < 45:
+            risks.append("Valuation or price-position score is stretched.")
+        if realized_volatility is not None and realized_volatility > 0.55:
+            risks.append("Realized volatility is elevated versus a stable portfolio holding.")
+        return risks[:5] or ["No major model-derived risk factor detected."]
+
+    def _catalysts(self, news_items: list[CompanyNewsRead], strengths: list[str]) -> list[str]:
+        catalysts = strengths[:2]
+        catalysts.extend(item.title for item in news_items[:2])
+        return catalysts[:4] or ["Next earnings, corporate announcement, or sector momentum update."]
+
+    def _explanation(
+        self,
+        *,
+        symbol: str,
+        final_score: int,
+        recommendation: str,
+        fundamental_score: int,
+        technical_score: int,
+        valuation_score: int,
+        risk_score: int,
+        governance_score: int,
+        sector_score: int,
+        news_score: int,
+        sentiment_score: int,
+    ) -> str:
+        return (
+            f"{symbol} recommendation is {recommendation} from a weighted multi-factor score of {final_score}/100. "
+            f"Drivers: fundamental {fundamental_score} at 40%, technical {technical_score} at 20%, "
+            f"valuation {valuation_score} at 10%, risk {risk_score} at 10%, governance {governance_score} at 5%, "
+            f"sector {sector_score} at 5%, news {news_score} at 5%, sentiment {sentiment_score} at 5%. "
+            "No recommendation is produced from a single indicator."
+        )
 
     def _recommendation(
         self,
         overall: int,
-        balance: int,
-        growth: int,
-        cash_flow: int,
-        valuation: int,
+        risk: int,
     ) -> str:
-        if overall >= 78 and min(balance, cash_flow) >= 60:
-            return "Build"
-        if overall >= 66 and growth >= 55:
+        if risk < 35:
+            return "Reduce" if overall >= 40 else "Sell"
+        if overall >= 95:
+            return "Strong Conviction Buy"
+        if overall >= 90:
+            return "Strong Buy"
+        if overall >= 80:
+            return "Buy"
+        if overall >= 70:
             return "Accumulate"
-        if overall >= 52:
+        if overall >= 60:
             return "Hold"
-        return "Review / Avoid Fresh Buy"
+        if overall >= 40:
+            return "Reduce"
+        if overall >= 20:
+            return "Sell"
+        return "Strong Sell"
 
     def _score_balance_sheet(
         self,

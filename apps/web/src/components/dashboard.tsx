@@ -29,7 +29,6 @@ import {
   ListChecks,
   LockKeyhole,
   LogOut,
-  Newspaper,
   Orbit,
   PieChart,
   RefreshCw,
@@ -70,7 +69,6 @@ import {
   fetchPortfolioIntelligence,
   fetchPortfolioSummary,
   fetchStockDiscovery,
-  runDailyAnalyticsRefresh,
   runOpenAiAnalyticsInsight,
   runPortfolioIntelligence,
   saveOpenAiSettings,
@@ -187,7 +185,6 @@ export function Dashboard() {
   });
   const {
     data: analytics,
-    isFetching: isFetchingAnalytics,
     refetch: refetchAnalytics
   } = useQuery({
     queryKey: ["portfolio-analytics"],
@@ -1451,33 +1448,50 @@ function AiConnectionStat({
   );
 }
 
-function PortfolioAiAnalysisView({
+type UnifiedAnalyticsTileId = "engine" | "ai" | "pipeline" | "companies" | "signals" | "warnings";
+
+function UnifiedAnalyticsWorkspace({
   analytics,
   settings,
   insight,
   error,
-  isGenerating,
-  onGenerate,
+  isRunning,
+  isReady,
+  onRun,
   onConfigure
 }: {
   analytics?: PortfolioAnalytics;
   settings?: OpenAiSettings;
   insight: AiAnalyticsInsight | null;
   error: string | null;
-  isGenerating: boolean;
-  onGenerate: () => Promise<void>;
+  isRunning: boolean;
+  isReady: boolean;
+  onRun: () => Promise<void>;
   onConfigure: () => void;
 }) {
+  const [selectedTile, setSelectedTile] = useState<UnifiedAnalyticsTileId>("engine");
+  const [selectedSymbol, setSelectedSymbol] = useState("");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const selectedCompany =
+    analytics?.companies.find((company) => company.symbol === selectedSymbol) ?? analytics?.companies[0];
   const decisionRows = buildHoldingDecisionRows(analytics);
   const addCount = decisionRows.filter((row) => row.action === "Add").length;
   const holdCount = decisionRows.filter((row) => row.action === "Hold").length;
   const reviewCount = decisionRows.filter((row) => row.action === "Review").length;
   const sanityIssueCount = analytics?.sanityChecks.filter((check) => check.status !== "pass").length ?? 0;
-  const isReady = Boolean(settings?.configured && analytics?.companies.length);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const aiReady = Boolean(insight?.configured && insight.summary);
+  const manualReady = Boolean(analytics?.companies.length);
+  const pipelineProfile = buildDataProvenanceProfile(analytics);
+  const gatePercent = Math.round(((manualReady ? 50 : 0) + (aiReady ? 50 : 0)));
 
   useEffect(() => {
-    if (!isGenerating) {
+    if (!selectedSymbol && analytics?.companies[0]) {
+      setSelectedSymbol(analytics.companies[0].symbol);
+    }
+  }, [analytics?.companies, selectedSymbol]);
+
+  useEffect(() => {
+    if (!isRunning) {
       setElapsedSeconds(0);
       return;
     }
@@ -1486,20 +1500,86 @@ function PortfolioAiAnalysisView({
       setElapsedSeconds((current) => current + 1);
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isGenerating]);
+  }, [isRunning]);
+
+  const tiles: Array<{
+    id: UnifiedAnalyticsTileId;
+    icon: React.ReactNode;
+    title: string;
+    value: string;
+    detail: string;
+    tone: string;
+    status: "ready" | "watch" | "locked";
+  }> = [
+    {
+      id: "engine",
+      icon: <CircuitBoard size={20} />,
+      title: "Manual Analytics Engine",
+      value: analytics ? `${analytics.dataQualityScore}/100` : "Waiting",
+      detail: manualReady ? `${analytics?.companies.length ?? 0} holdings scored by fundamentals and valuation` : "Run analytics to build the deterministic score pack",
+      tone: "from-teal-300/18 via-cyan-300/8 to-white/[0.035]",
+      status: manualReady ? "ready" : "locked"
+    },
+    {
+      id: "ai",
+      icon: <BrainCircuit size={20} />,
+      title: "AI Engine",
+      value: aiReady ? "Complete" : settings?.configured ? "Ready" : "Config needed",
+      detail: aiReady ? `${providerLabel(insight?.provider ?? settings?.provider ?? "gemini")} advisor output is attached` : "AI reads only validated analytics, not raw data",
+      tone: "from-violet-300/18 via-cyan-300/8 to-white/[0.035]",
+      status: aiReady ? "ready" : settings?.configured ? "watch" : "locked"
+    },
+    {
+      id: "pipeline",
+      icon: <DatabaseZap size={20} />,
+      title: "Data Processing",
+      value: `${pipelineProfile.analyticsReadiness}%`,
+      detail: "Source matching, sanitization, sanity checks and analytics gate",
+      tone: "from-sky-300/18 via-teal-300/8 to-white/[0.035]",
+      status: pipelineProfile.blockers ? "watch" : manualReady ? "ready" : "locked"
+    },
+    {
+      id: "companies",
+      icon: <Building2 size={20} />,
+      title: "Company Board",
+      value: `${analytics?.companies.length ?? 0}`,
+      detail: "Business quality, growth, cash flow and valuation drill-down",
+      tone: "from-emerald-300/18 via-cyan-300/8 to-white/[0.035]",
+      status: manualReady ? "ready" : "locked"
+    },
+    {
+      id: "signals",
+      icon: <Target size={20} />,
+      title: "Decision Signals",
+      value: `${addCount}/${holdCount}/${reviewCount}`,
+      detail: "Add, hold and review calls from validated analytics",
+      tone: "from-amber/18 via-cyan-300/8 to-white/[0.035]",
+      status: decisionRows.length ? "ready" : "locked"
+    },
+    {
+      id: "warnings",
+      icon: <ShieldCheck size={20} />,
+      title: "Sanity and Warnings",
+      value: sanityIssueCount ? `${sanityIssueCount} watch` : "Clean",
+      detail: "Data warnings must stay visible before any advice is shown",
+      tone: "from-rose-300/16 via-amber/8 to-white/[0.035]",
+      status: sanityIssueCount || insight?.dataWarnings.length ? "watch" : manualReady ? "ready" : "locked"
+    }
+  ];
 
   return (
-    <div className="overflow-hidden rounded-lg border border-violet-200/16 bg-[#100d18] shadow-[0_28px_90px_rgba(139,92,246,0.16)]">
-      <div className="border-b border-violet-200/14 bg-[radial-gradient(circle_at_14%_0%,rgba(167,139,250,0.25),transparent_34%),linear-gradient(135deg,rgba(67,56,202,0.32),rgba(16,13,24,0.96))] p-4">
+    <div className="overflow-hidden rounded-lg border border-cyan-200/16 bg-[#050b12] shadow-[0_30px_110px_rgba(34,211,238,0.14)]">
+      <div className="relative overflow-hidden border-b border-cyan-200/12 bg-[radial-gradient(circle_at_18%_0%,rgba(34,211,238,0.24),transparent_32%),radial-gradient(circle_at_82%_12%,rgba(167,139,250,0.22),transparent_30%),linear-gradient(135deg,rgba(8,47,73,0.62),rgba(5,11,18,0.97))] p-4">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-[linear-gradient(90deg,transparent,#67e8f9,transparent)]" />
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="max-w-3xl">
-            <div className="mb-2 flex items-center gap-2 text-violet-100">
-              <Bot size={18} />
-              AI Analysis
+            <div className="mb-2 flex items-center gap-2 text-sm text-cyan-100">
+              <Atom size={18} />
+              Unified Analytics
             </div>
-            <h2 className="text-2xl font-semibold tracking-normal">Deep portfolio insight from your holdings</h2>
-            <p className="mt-2 text-sm leading-6 text-violet-50/70">
-              Gemini reads the backend company analytics, decision signals and sanity checks for your current portfolio only, then turns them into practical buy, hold, review and risk-control guidance.
+            <h2 className="text-2xl font-semibold tracking-normal">Manual engine plus AI engine, one decision dashboard</h2>
+            <p className="mt-2 text-sm leading-6 text-cyan-50/72">
+              Market data is fetched, sanitized, validated and scored by the deterministic analytics engine first. The AI engine then reviews that prepared evidence pack before any advisory tile is unlocked.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -1507,573 +1587,368 @@ function PortfolioAiAnalysisView({
               <KeyRound size={18} />
               AI Config
             </Button>
-            <Button type="button" onClick={onGenerate} disabled={isGenerating || !isReady}>
-              <Sparkles size={18} className={isGenerating ? "animate-pulse" : ""} />
-              {isGenerating ? "Analyzing" : "Analyze with AI"}
+            <Button type="button" onClick={onRun} disabled={isRunning}>
+              <Sparkles size={18} className={isRunning ? "animate-pulse" : ""} />
+              {isRunning ? "Processing" : "Run Full Analytics"}
             </Button>
           </div>
         </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-3">
+          <UnifiedGateStep label="Manual analytics" ready={manualReady} detail={manualReady ? `${analytics?.companies.length ?? 0} holdings processed` : "Waiting for BI engine"} />
+          <UnifiedGateStep label="AI analysis" ready={aiReady} detail={aiReady ? "Advisor output generated" : settings?.configured ? "Ready to run" : "Provider key needed"} />
+          <UnifiedGateStep label="Dashboard release" ready={isReady} detail={isReady ? "Tiles are live" : `${gatePercent}% complete`} />
+        </div>
       </div>
 
-      <div className="grid gap-3 border-b border-violet-200/10 bg-black/18 p-4 md:grid-cols-2 xl:grid-cols-4">
-        <AnalyticsHeroTile
-          icon={<KeyRound size={18} />}
-          label="Provider"
-          value={settings?.configured ? providerLabel(settings.provider) : "Not set"}
-          detail={settings?.configured ? `${settings.maskedKey ?? "saved key"} · ${settings.model}` : "Add Gemini key in AI Config"}
-          tone="sky"
-        />
-        <AnalyticsHeroTile
-          icon={<Database size={18} />}
-          label="Data Quality"
-          value={analytics ? `${analytics.dataQualityScore}/100` : "Loading"}
-          detail={analytics ? `Daily cache ${formatShortDateTime(analytics.generatedAt)}` : "Waiting for analytics"}
-          tone="teal"
-        />
-        <AnalyticsHeroTile
-          icon={<Target size={18} />}
-          label="Signals"
-          value={`${addCount}/${holdCount}/${reviewCount}`}
-          detail="Add, hold, review"
-          tone="green"
-        />
-        <AnalyticsHeroTile
-          icon={<ShieldCheck size={18} />}
-          label="Sanity"
-          value={sanityIssueCount ? `${sanityIssueCount} watch` : "Passed"}
-          detail="Coverage, score and data checks"
-          tone="amber"
-        />
+      <div className="grid gap-3 border-b border-cyan-200/10 bg-black/18 p-4 md:grid-cols-2 xl:grid-cols-3">
+        {tiles.map((tile) => (
+          <button
+            key={tile.id}
+            type="button"
+            onClick={() => setSelectedTile(tile.id)}
+            className={`group min-h-[148px] rounded-lg border p-4 text-left transition duration-300 hover:-translate-y-1 ${
+              selectedTile === tile.id
+                ? "border-cyan-100/50 bg-cyan-300/12 shadow-[0_0_38px_rgba(34,211,238,0.18)]"
+                : "border-white/10 bg-gradient-to-br hover:border-cyan-200/30"
+            } ${tile.tone}`}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 bg-black/24 text-cyan-100 transition group-hover:scale-105">
+                {tile.icon}
+              </span>
+              <span className={`rounded-full border px-2.5 py-1 text-xs ${
+                tile.status === "ready"
+                  ? "border-profit/24 bg-profit/10 text-profit"
+                  : tile.status === "watch"
+                    ? "border-amber/24 bg-amber/10 text-amber"
+                    : "border-white/10 bg-white/[0.04] text-muted"
+              }`}>
+                {tile.status}
+              </span>
+            </div>
+            <div className="text-sm text-cyan-50/62">{tile.title}</div>
+            <div className="mt-1 text-2xl font-semibold tracking-normal text-foreground">{tile.value}</div>
+            <div className="mt-2 text-sm leading-5 text-muted">{tile.detail}</div>
+          </button>
+        ))}
       </div>
 
       <div className="grid gap-4 p-4">
-        {!settings?.configured ? (
-          <div className="rounded-md border border-amber/20 bg-amber/10 p-4 text-sm leading-6 text-amber/90">
-            Gemini is not configured yet. Open AI Config and save your Gemini API key. The recommended free-tier model is gemini-3.5-flash.
-          </div>
-        ) : null}
-
-        {analytics && analytics.companies.length === 0 ? (
-          <div className="rounded-md border border-amber/20 bg-amber/10 p-4 text-sm leading-6 text-amber/90">
-            No holdings are available for AI analysis. Sync Zerodha or import your portfolio first.
-          </div>
-        ) : null}
-
         {error ? (
           <div className="rounded-md border border-loss/20 bg-loss/10 p-4 text-sm leading-6 text-loss">
             {error}
           </div>
         ) : null}
 
-        {isGenerating ? (
+        {!settings?.configured ? (
+          <div className="rounded-md border border-amber/22 bg-amber/10 p-4 text-sm leading-6 text-amber/90">
+            AI provider is not configured. Save and validate a Gemini or OpenAI key before the AI engine can release advisory output.
+          </div>
+        ) : null}
+
+        {isRunning ? (
           <AiAnalysisProgress
             elapsedSeconds={elapsedSeconds}
             holdingsCount={analytics?.companies.length ?? 0}
             provider={settings?.provider ?? "gemini"}
             model={settings?.model ?? RECOMMENDED_GEMINI_MODEL}
           />
-        ) : insight ? (
-          <div className="rounded-md border border-profit/18 bg-profit/10 p-4 text-sm leading-6 text-profit">
-            AI analysis completed. Review the insight sections below before taking any market decision.
-          </div>
         ) : null}
 
-        <section className="rounded-md border border-violet-200/12 bg-white/[0.045] p-4">
-          <div className="mb-2 flex items-center gap-2 text-violet-100">
-            <ClipboardList size={18} />
-            <h3 className="text-base font-semibold text-foreground">Analysis discipline</h3>
-          </div>
-          <div className="grid gap-3 text-sm leading-6 text-muted md:grid-cols-3">
-            <div>Uses only your saved holdings and backend analytics data.</div>
-            <div>Checks fundamentals, valuation, growth, cash flow, concentration and sanity warnings.</div>
-            <div>Returns cautious decision support, not guaranteed buy or sell calls.</div>
-          </div>
-        </section>
+        {!isReady && !isRunning ? (
+          <section className="rounded-lg border border-cyan-200/14 bg-[linear-gradient(135deg,rgba(34,211,238,0.10),rgba(167,139,250,0.08),rgba(0,0,0,0.28))] p-5">
+            <div className="mb-3 flex items-center gap-2 text-cyan-100">
+              <LockKeyhole size={18} />
+              <h3 className="text-base font-semibold text-foreground">Dashboard locked until both engines finish</h3>
+            </div>
+            <p className="max-w-3xl text-sm leading-6 text-cyan-50/72">
+              Click Run Full Analytics. The app will refresh manual company analytics, validate the data pipeline, run the AI engine on the cleaned evidence pack, store the snapshots, and then release the interactive advisory tiles.
+            </p>
+          </section>
+        ) : (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={selectedTile}
+              initial={{ opacity: 0, y: 16, scale: 0.985, filter: "blur(8px)" }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: -10, scale: 0.99, filter: "blur(6px)" }}
+              transition={{ duration: 0.28, ease: "easeOut" }}
+            >
+              <UnifiedAnalyticsDetail
+                tile={selectedTile}
+                analytics={analytics}
+                insight={insight}
+                selectedCompany={selectedCompany}
+                selectedSymbol={selectedSymbol}
+                setSelectedSymbol={setSelectedSymbol}
+                decisionRows={decisionRows}
+              />
+            </motion.div>
+          </AnimatePresence>
+        )}
+      </div>
+    </div>
+  );
+}
 
+function UnifiedGateStep({ label, ready, detail }: { label: string; ready: boolean; detail: string }) {
+  return (
+    <div className={`rounded-md border p-3 ${ready ? "border-profit/18 bg-profit/10" : "border-white/10 bg-black/22"}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-foreground">{label}</span>
+        {ready ? <CheckCircle2 size={17} className="text-profit" /> : <RefreshCw size={17} className="text-muted" />}
+      </div>
+      <div className="mt-1 text-xs leading-5 text-muted">{detail}</div>
+    </div>
+  );
+}
+
+function UnifiedAnalyticsDetail({
+  tile,
+  analytics,
+  insight,
+  selectedCompany,
+  selectedSymbol,
+  setSelectedSymbol,
+  decisionRows
+}: {
+  tile: UnifiedAnalyticsTileId;
+  analytics?: PortfolioAnalytics;
+  insight: AiAnalyticsInsight | null;
+  selectedCompany?: CompanyAnalytics;
+  selectedSymbol: string;
+  setSelectedSymbol: (symbol: string) => void;
+  decisionRows: HoldingDecisionRow[];
+}) {
+  if (tile === "pipeline") {
+    return <DataProvenancePanel analytics={analytics} />;
+  }
+
+  if (tile === "ai") {
+    return (
+      <section className="grid gap-3 xl:grid-cols-2">
         {insight ? (
-          <div className="grid gap-3 xl:grid-cols-2">
-            <section className="rounded-md border border-violet-200/14 bg-violet-300/[0.07] p-4 xl:col-span-2">
+          <>
+            <div className="rounded-md border border-violet-200/16 bg-violet-300/[0.07] p-4 xl:col-span-2">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-sm text-violet-100">
                 <span>{insight.generatedAt ? `Generated ${formatShortDateTime(insight.generatedAt)}` : "AI insight"}</span>
                 <span>{insight.provider ? `${providerLabel(insight.provider)} · ${insight.model}` : insight.model}</span>
               </div>
               <AiFormattedText text={insight.summary} className="text-sm leading-6 text-foreground/86" />
-            </section>
+            </div>
             <AiInsightList title="Buy focus" items={insight.buyFocus} tone="text-profit" />
             <AiInsightList title="Hold focus" items={insight.holdFocus} tone="text-amber" />
             <AiInsightList title="Sell or review focus" items={insight.sellOrReviewFocus} tone="text-loss" />
             <AiInsightList title="Risk controls" items={insight.riskControls} tone="text-sky-200" />
-            {insight.dataWarnings.length ? (
-              <section className="rounded-md border border-amber/20 bg-amber/10 p-4 xl:col-span-2">
-                <h4 className="mb-3 text-base font-semibold text-amber">AI data warnings</h4>
-                <div className="grid gap-2 md:grid-cols-2">
-                    {insight.dataWarnings.map((item, index) => (
-                      <div key={`${item}-${index}`} className="rounded-md border border-amber/15 bg-black/16 p-3 text-sm leading-5 text-amber/90">
-                        <AiFormattedText text={item} />
-                      </div>
-                    ))}
-                </div>
-              </section>
-            ) : null}
-          </div>
+          </>
         ) : (
-          <div className="rounded-md border border-white/10 bg-black/24 p-4 text-sm leading-6 text-muted">
-            Click Analyze with AI after Gemini is configured. The output will appear here as a portfolio-level consultant note with symbol-specific action areas.
+          <div className="rounded-md border border-white/10 bg-black/24 p-4 text-sm leading-6 text-muted xl:col-span-2">
+            AI output will appear after Run Full Analytics completes with a configured provider.
           </div>
         )}
-      </div>
-    </div>
-  );
-}
+      </section>
+    );
+  }
 
-function PortfolioAnalyticsView({
-  analytics,
-  isLoading,
-  onRefresh
-}: {
-  analytics?: PortfolioAnalytics;
-  isLoading: boolean;
-  onRefresh: () => Promise<void>;
-}) {
-  const [selectedSymbol, setSelectedSymbol] = useState("");
-  const selectedCompany =
-    analytics?.companies.find((company) => company.symbol === selectedSymbol) ?? analytics?.companies[0];
-  const strongCount = analytics?.companies.filter((company) => company.overallScore >= 72).length ?? 0;
-  const sanityIssueCount = analytics?.sanityChecks.filter((check) => check.status !== "pass").length ?? 0;
-  const decisionRows = buildHoldingDecisionRows(analytics);
-  const addCount = decisionRows.filter((row) => row.action === "Add").length;
-  const holdCount = decisionRows.filter((row) => row.action === "Hold").length;
-  const trimCount = decisionRows.filter((row) => row.action === "Review").length;
-
-  useEffect(() => {
-    if (!selectedSymbol && analytics?.companies[0]) {
-      setSelectedSymbol(analytics.companies[0].symbol);
-    }
-  }, [analytics?.companies, selectedSymbol]);
-
-  return (
-    <div className="overflow-hidden rounded-lg border border-teal-200/14 bg-[#071311] shadow-[0_28px_90px_rgba(20,184,166,0.14)]">
-      <div className="border-b border-teal-200/14 bg-[radial-gradient(circle_at_12%_0%,rgba(45,212,191,0.24),transparent_34%),linear-gradient(135deg,rgba(6,78,59,0.32),rgba(7,19,17,0.96))] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="max-w-3xl">
-            <div className="mb-2 flex items-center gap-2 text-sm text-teal-100">
-              <Building2 size={18} />
-              Company Analytics
+  if (tile === "companies") {
+    return (
+      <section className="grid gap-4 xl:grid-cols-[0.74fr_1.26fr]">
+        <div className="rounded-md border border-teal-200/12 bg-white/[0.045] p-4">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-base font-semibold">Company board</h3>
+              <p className="text-sm text-teal-50/55">Ranked by business intelligence score</p>
             </div>
-            <h2 className="text-2xl font-semibold tracking-normal">Daily business intelligence scan</h2>
-            <p className="mt-2 text-sm leading-6 text-teal-50/68">
-              Balance-sheet quality, growth, cash-flow strength, valuation position and internet news are combined into a planning view for each holding.
-            </p>
+            <Search className="text-teal-100" size={20} />
           </div>
-          <Button type="button" onClick={onRefresh} disabled={isLoading}>
-            <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
-            {isLoading ? "Refreshing" : "Refresh Daily BI"}
-          </Button>
+          <div className="space-y-2">
+            {analytics?.companies.map((company) => (
+              <button
+                key={company.symbol}
+                type="button"
+                onClick={() => setSelectedSymbol(company.symbol)}
+                className={`w-full rounded-md border p-3 text-left transition hover:-translate-y-0.5 ${
+                  selectedSymbol === company.symbol
+                    ? "border-teal-200/45 bg-teal-300/12"
+                    : "border-teal-200/12 bg-black/20 hover:border-teal-200/28"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{company.symbol}</div>
+                    <div className="truncate text-xs text-muted">{company.companyName}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className={scoreTone(company.overallScore)}>{company.overallScore}</div>
+                    <div className="text-xs text-muted">{company.recommendation}</div>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
-
-      <div className="grid gap-3 border-b border-teal-200/10 bg-black/16 p-4 md:grid-cols-2 xl:grid-cols-4">
-        <AnalyticsHeroTile icon={<Sparkles size={18} />} label="BI Quality" value={analytics ? `${analytics.dataQualityScore}/100` : "Loading"} detail={analytics ? `Next refresh ${formatShortDateTime(analytics.nextRefreshAt)}` : "Fetching providers"} tone="teal" />
-        <AnalyticsHeroTile icon={<Building2 size={18} />} label="Companies" value={`${analytics?.companies.length ?? 0}`} detail={analytics ? analytics.modelVersion : "Holdings analyzed"} tone="sky" />
-        <AnalyticsHeroTile icon={<CheckCircle2 size={18} />} label="Strong" value={`${strongCount}`} detail="Score 72+" tone="green" />
-        <AnalyticsHeroTile icon={<ShieldCheck size={18} />} label="Sanity" value={sanityIssueCount ? `${sanityIssueCount} watch` : "Passed"} detail="Coverage and score checks" tone="amber" />
-      </div>
-
-      <DataProvenancePanel analytics={analytics} />
-
-      <div className="p-4">
-        {analytics ? (
-          <section className="mb-4 rounded-md border border-emerald-200/14 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(14,165,233,0.08),rgba(7,19,17,0.40))] p-4">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-emerald-100">
-                  <CircleDollarSign size={18} />
-                  <span className="text-sm font-medium text-foreground">Important data</span>
-                </div>
-                <h3 className="text-xl font-semibold tracking-normal">Buy, hold and review signals</h3>
-                <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-50/68">
-                  Focused on your current portfolio holdings only, ranked by fundamentals, valuation position and data quality.
-                </p>
-              </div>
-              <div className="grid w-full grid-cols-3 gap-2 sm:w-auto sm:min-w-[300px]">
-                <DecisionCount label="Add" value={addCount} tone="text-profit" />
-                <DecisionCount label="Hold" value={holdCount} tone="text-amber" />
-                <DecisionCount label="Review" value={trimCount} tone="text-loss" />
-              </div>
-            </div>
-
-            <div className="grid gap-3 xl:grid-cols-3">
-              {decisionRows.slice(0, 6).map((row) => (
-                <button
-                  key={row.symbol}
-                  type="button"
-                  onClick={() => setSelectedSymbol(row.symbol)}
-                  className={`rounded-md border p-3 text-left transition duration-200 hover:-translate-y-0.5 ${
-                    selectedCompany?.symbol === row.symbol
-                      ? "border-emerald-200/45 bg-emerald-300/12"
-                      : "border-white/10 bg-black/24 hover:border-emerald-200/28"
-                  }`}
-                >
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-medium">{row.symbol}</div>
-                      <div className="truncate text-xs text-muted">{row.companyName}</div>
-                    </div>
-                    <span className={`rounded-md border px-2 py-1 text-xs ${decisionBadgeTone(row.action)}`}>
-                      {row.action}
-                    </span>
-                  </div>
-                  <div className="mb-3 grid grid-cols-3 gap-2">
-                    <DecisionMiniStat label="Score" value={`${row.score}`} tone={scoreTone(row.score)} />
-                    <DecisionMiniStat label="Conviction" value={`${row.conviction}`} tone={scoreTone(row.conviction)} />
-                    <DecisionMiniStat label="Confidence" value={`${row.confidence}`} tone={scoreTone(row.confidence)} />
-                  </div>
-                  <div className="text-sm leading-5 text-foreground/82">{row.reason}</div>
-                  <div className="mt-3 rounded-md border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-muted">
-                    {row.entryDiscipline}
-                  </div>
-                </button>
-              ))}
-            </div>
-          </section>
-        ) : null}
-
-        {analytics ? (
-          <div className="mb-4 rounded-md border border-teal-200/12 bg-white/[0.045] p-4">
-            <div className="mb-2 flex items-center gap-2 text-teal-100">
-              <Database size={18} />
-              <span className="text-sm font-medium text-foreground">Daily summary</span>
-            </div>
-            <p className="text-sm leading-6 text-foreground/84">{analytics.summary}</p>
-          </div>
-        ) : (
-          <div className="rounded-md border border-teal-200/12 bg-white/[0.045] p-4 text-sm text-muted">
-            Loading company analytics from public finance providers...
-          </div>
-        )}
-
-        {analytics?.sanityChecks.length ? (
-          <section className="mb-4 rounded-md border border-sky-200/12 bg-sky-300/[0.055] p-4">
-            <div className="mb-3 flex items-center gap-2 text-sky-100">
-              <ShieldCheck size={18} />
-              <h3 className="text-base font-semibold text-foreground">Analytics sanity check</h3>
-            </div>
-            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-              {analytics.sanityChecks.map((check) => (
-                <div key={check.label} className="rounded-md border border-white/10 bg-black/22 p-3">
-                  <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium">{check.label}</span>
-                    <span className={sanityTone(check.status)}>{check.status}</span>
-                  </div>
-                  <p className="text-xs leading-5 text-muted">{check.detail}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        ) : null}
 
         {selectedCompany ? (
-          <div className="grid gap-4 xl:grid-cols-[0.75fr_1.25fr]">
-            <section className="rounded-md border border-teal-200/12 bg-white/[0.045] p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-semibold">Company board</h3>
-                  <p className="text-sm text-teal-50/55">Ranked by business intelligence score</p>
-                </div>
-                <Search className="text-teal-100" size={20} />
+          <div className="rounded-md border border-teal-200/12 bg-white/[0.045] p-4">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="mb-1 text-sm text-teal-50/58">{selectedCompany.sector ?? "Sector unavailable"}</div>
+                <h3 className="text-2xl font-semibold tracking-normal">{selectedCompany.companyName}</h3>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-foreground/78">{selectedCompany.businessSummary}</p>
               </div>
-              <div className="space-y-2">
-                {analytics?.companies.map((company) => (
-                  <button
-                    key={company.symbol}
-                    type="button"
-                    onClick={() => setSelectedSymbol(company.symbol)}
-                    className={`w-full rounded-md border p-3 text-left transition hover:-translate-y-0.5 ${
-                      selectedCompany.symbol === company.symbol
-                        ? "border-teal-200/45 bg-teal-300/12"
-                        : "border-teal-200/12 bg-black/20 hover:border-teal-200/28"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="font-medium">{company.symbol}</div>
-                        <div className="truncate text-xs text-muted">{company.companyName}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className={scoreTone(company.overallScore)}>{company.overallScore}</div>
-                        <div className="text-xs text-muted">{company.recommendation}</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <section className="rounded-md border border-teal-200/12 bg-white/[0.045] p-4">
-              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="mb-1 text-sm text-teal-50/58">{selectedCompany.sector ?? "Sector unavailable"}</div>
-                  <h3 className="text-2xl font-semibold tracking-normal">{selectedCompany.companyName}</h3>
-                  <p className="mt-2 max-w-3xl text-sm leading-6 text-foreground/78">{selectedCompany.businessSummary}</p>
-                </div>
-                <div className="rounded-md border border-teal-200/14 bg-black/24 px-3 py-2 text-right">
-                  <div className="text-xs text-muted">BI score</div>
-                  <div className={`text-2xl font-semibold ${scoreTone(selectedCompany.overallScore)}`}>
-                    {selectedCompany.overallScore}/100
-                  </div>
+              <div className="rounded-md border border-teal-200/14 bg-black/24 px-3 py-2 text-right">
+                <div className="text-xs text-muted">BI score</div>
+                <div className={`text-2xl font-semibold ${scoreTone(selectedCompany.overallScore)}`}>
+                  {selectedCompany.overallScore}/100
                 </div>
               </div>
-
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <CompanyScore label="Balance sheet" value={selectedCompany.balanceSheetScore} />
-                <CompanyScore label="Growth" value={selectedCompany.growthScore} />
-                <CompanyScore label="Cash flow" value={selectedCompany.cashFlowScore} />
-                <CompanyScore label="Valuation" value={selectedCompany.valuationScore} />
+            </div>
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <CompanyScore label="Final score" value={selectedCompany.finalScore ?? selectedCompany.overallScore} />
+              <CompanyScore label="Fundamental" value={selectedCompany.fundamentalScore ?? selectedCompany.overallScore} />
+              <CompanyScore label="Technical" value={selectedCompany.technicalScore ?? 50} />
+              <CompanyScore label="Risk" value={selectedCompany.riskScore ?? 50} />
+              <CompanyScore label="Balance sheet" value={selectedCompany.balanceSheetScore} />
+              <CompanyScore label="Growth" value={selectedCompany.growthScore} />
+              <CompanyScore label="Cash flow" value={selectedCompany.cashFlowScore} />
+              <CompanyScore label="Valuation" value={selectedCompany.valuationScore} />
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <DecisionMiniStat label="Confidence" value={`${selectedCompany.confidence ?? 0}`} tone={scoreTone(selectedCompany.confidence ?? 0)} />
+              <DecisionMiniStat label="Expected upside" value={selectedCompany.expectedUpside != null ? `${selectedCompany.expectedUpside.toFixed(1)}%` : "N/A"} tone={(selectedCompany.expectedUpside ?? 0) >= 0 ? "text-profit" : "text-loss"} />
+              <DecisionMiniStat label="Target 1" value={selectedCompany.target1 != null ? formatCurrency(selectedCompany.target1) : "N/A"} tone="text-sky-200" />
+              <DecisionMiniStat label="Stop loss" value={selectedCompany.stopLoss != null ? formatCurrency(selectedCompany.stopLoss) : "N/A"} tone="text-loss" />
+            </div>
+            <div className="mt-4 rounded-md border border-teal-200/12 bg-black/22 p-4">
+              <div className="mb-2 flex items-center gap-2 text-teal-100">
+                <Sparkles size={18} />
+                <span className="text-sm font-medium text-foreground">Planning suggestion</span>
               </div>
-
-              <div className="mt-4 rounded-md border border-teal-200/12 bg-black/22 p-4">
-                <div className="mb-2 flex items-center gap-2 text-teal-100">
-                  <Sparkles size={18} />
-                  <span className="text-sm font-medium text-foreground">Planning suggestion</span>
-                </div>
-                <p className="text-sm leading-6 text-foreground/84">{selectedCompany.planning}</p>
-              </div>
-
-              <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                <SignalPanel title="Business strengths" items={selectedCompany.strengths} tone="text-profit" />
-                <SignalPanel title="Review concerns" items={selectedCompany.concerns} tone="text-amber" />
-              </div>
-
-              <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-                <section className="rounded-md border border-teal-200/12 bg-black/22 p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <Database className="text-teal-100" size={18} />
-                    <h4 className="text-base font-semibold">Financial snapshot</h4>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {selectedCompany.financials.map((metric) => (
-                      <div key={metric.label} className="rounded-md border border-white/10 bg-white/[0.045] p-3">
-                        <div className="text-xs text-muted">{metric.label}</div>
-                        <div className={`mt-1 text-sm font-semibold ${metricTone(metric.tone)}`}>{metric.value}</div>
-                        {metric.detail ? <div className="mt-1 text-xs text-muted">{metric.detail}</div> : null}
-                      </div>
-                    ))}
-                  </div>
-                </section>
-
-                <section className="rounded-md border border-teal-200/12 bg-black/22 p-4">
-                  <div className="mb-3 flex items-center gap-2">
-                    <Newspaper className="text-amber" size={18} />
-                    <h4 className="text-base font-semibold">Latest news signals</h4>
-                  </div>
-                  <div className="space-y-2">
-                    {selectedCompany.news.length ? (
-                      selectedCompany.news.map((item) => (
-                        <a
-                          key={`${item.title}-${item.link ?? ""}`}
-                          href={item.link ?? "#"}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="block rounded-md border border-white/10 bg-white/[0.045] p-3 transition hover:border-amber/30"
-                        >
-                          <div className="text-sm font-medium leading-5 text-foreground">{item.title}</div>
-                          <div className="mt-1 text-xs text-muted">{item.publisher ?? "Market news"}</div>
-                        </a>
-                      ))
-                    ) : (
-                      <div className="rounded-md border border-white/10 bg-white/[0.045] p-3 text-sm text-muted">
-                        No provider news was returned for this company.
-                      </div>
-                    )}
-                  </div>
-                </section>
-              </div>
-            </section>
-          </div>
-        ) : null}
-
-        {analytics?.warnings.length ? (
-          <div className="mt-4 rounded-md border border-amber/20 bg-amber/10 p-4">
-            <div className="mb-2 text-sm font-medium text-amber">Provider warnings</div>
-            <div className="grid gap-2 lg:grid-cols-2">
-              {analytics.warnings.map((warning) => (
-                <div key={warning} className="text-sm leading-5 text-amber/90">
-                  {warning}
-                </div>
-              ))}
+              <p className="text-sm leading-6 text-foreground/84">{selectedCompany.planning}</p>
+              {selectedCompany.explanation ? (
+                <p className="mt-3 text-sm leading-6 text-cyan-50/72">{selectedCompany.explanation}</p>
+              ) : null}
+            </div>
+            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+              <SignalPanel title="Business strengths" items={selectedCompany.strengths} tone="text-profit" />
+              <SignalPanel title="Risks and review concerns" items={selectedCompany.risks?.length ? selectedCompany.risks : selectedCompany.concerns} tone="text-amber" />
             </div>
           </div>
         ) : null}
-      </div>
-    </div>
-  );
-}
+      </section>
+    );
+  }
 
-function DataProvenancePanel({ analytics }: { analytics?: PortfolioAnalytics }) {
-  const profile = buildDataProvenanceProfile(analytics);
-  const gateTone =
-    profile.analyticsReadiness >= 75 && profile.blockers === 0
-      ? "text-profit"
-      : profile.analyticsReadiness >= 55
-        ? "text-amber"
-        : "text-loss";
-
-  return (
-    <section className="border-b border-teal-200/10 bg-black/18 p-4">
-      <div className="data-pipeline-shell overflow-hidden rounded-lg border border-cyan-200/14 bg-[#061117] p-4">
-        <div className="data-pipeline-scan" />
-        <div className="relative z-10">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
-            <div className="max-w-3xl">
-              <div className="mb-2 flex items-center gap-2 text-sm text-cyan-100">
-                <DatabaseZap size={18} />
-                Data provenance and validation
-              </div>
-              <h3 className="text-xl font-semibold tracking-normal">What data enters analytics, and how clean is it?</h3>
-              <p className="mt-2 text-sm leading-6 text-cyan-50/70">
-                Holdings, market feeds, fundamentals and news are fetched, sanitized, cross-checked, scored by sanity checks, then passed into analytics only with warnings and coverage penalties attached.
-              </p>
+  if (tile === "signals") {
+    return (
+      <section className="rounded-md border border-emerald-200/14 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(14,165,233,0.08),rgba(0,0,0,0.28))] p-4">
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-emerald-100">
+              <CircleDollarSign size={18} />
+              <span className="text-sm font-medium text-foreground">Decision signals</span>
             </div>
-            <div className="rounded-lg border border-white/10 bg-black/28 p-3 text-right">
-              <div className="text-xs uppercase tracking-[0.18em] text-muted">Analytics gate</div>
-              <div className={`mt-1 text-2xl font-semibold ${gateTone}`}>{profile.analyticsReadiness}%</div>
-              <div className="mt-1 text-xs text-muted">
-                {profile.blockers ? `${profile.blockers} blocker(s)` : "Ready with warnings"}
-              </div>
-            </div>
+            <h3 className="text-xl font-semibold tracking-normal">Buy, hold and review shortlist</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-emerald-50/68">
+              Ranked by conviction, confidence, fundamentals, valuation position and data quality.
+            </p>
           </div>
-
-          <div className="grid gap-3 xl:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <RadioTower className="text-cyan-100" size={18} />
-                  Source coverage
-                </div>
-                <span className="text-xs text-muted">{profile.companyCount} holding(s)</span>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                {profile.sources.map((source, index) => (
-                  <motion.div
-                    key={source.label}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.28, delay: index * 0.04 }}
-                    className="rounded-md border border-white/10 bg-white/[0.04] p-3"
-                  >
-                    <div className="mb-3 flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold">{source.label}</div>
-                        <div className="mt-1 text-xs leading-5 text-muted">{source.detail}</div>
-                      </div>
-                      <span className={source.percent >= 70 ? "text-profit" : source.percent >= 35 ? "text-amber" : "text-loss"}>
-                        {source.percent}%
-                      </span>
-                    </div>
-                    <ProgressRail percent={source.percent} tone={source.tone} />
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <CircuitBoard className="text-teal-100" size={18} />
-                  Processing pipeline
-                </div>
-                <span className="text-xs text-muted">before analytics</span>
-              </div>
-              <div className="space-y-3">
-                {profile.stages.map((stage, index) => (
-                  <motion.div
-                    key={stage.label}
-                    initial={{ opacity: 0, x: 16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.28, delay: index * 0.05 }}
-                    className="grid gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3 sm:grid-cols-[150px_1fr_58px]"
-                  >
-                    <div>
-                      <div className="text-sm font-semibold">{stage.label}</div>
-                      <div className="mt-1 text-xs text-muted">{stage.detail}</div>
-                    </div>
-                    <div className="self-center">
-                      <ProgressRail percent={stage.percent} tone={stage.tone} />
-                    </div>
-                    <div className={stage.percent >= 75 ? "text-right text-profit" : stage.percent >= 50 ? "text-right text-amber" : "text-right text-loss"}>
-                      {stage.percent}%
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_0.8fr]">
-            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                <ShieldCheck className="text-profit" size={18} />
-                Sanity and validation checks
-              </div>
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                {profile.checks.map((check) => (
-                  <div key={check.label} className="rounded-md border border-white/10 bg-white/[0.035] p-3">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-sm font-medium">{check.label}</span>
-                      <span className={sanityTone(check.status)}>{check.status}</span>
-                    </div>
-                    <p className="text-xs leading-5 text-muted">{check.detail}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
-              <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                <AlertTriangle className={profile.blockers ? "text-loss" : "text-amber"} size={18} />
-                Data issues before analytics
-              </div>
-              <div className="space-y-2">
-                {profile.issues.length ? (
-                  profile.issues.slice(0, 5).map((issue, index) => (
-                    <div key={`${issue}-${index}`} className="rounded-md border border-amber/16 bg-amber/10 p-2 text-xs leading-5 text-amber/90">
-                      {issue}
-                    </div>
-                  ))
-                ) : (
-                  <div className="rounded-md border border-profit/16 bg-profit/10 p-3 text-sm leading-5 text-profit">
-                    No provider warning was returned in the latest analytics run.
-                  </div>
-                )}
-              </div>
-            </div>
+          <div className="grid w-full grid-cols-3 gap-2 sm:w-auto sm:min-w-[300px]">
+            <DecisionCount label="Add" value={decisionRows.filter((row) => row.action === "Add").length} tone="text-profit" />
+            <DecisionCount label="Hold" value={decisionRows.filter((row) => row.action === "Hold").length} tone="text-amber" />
+            <DecisionCount label="Review" value={decisionRows.filter((row) => row.action === "Review").length} tone="text-loss" />
           </div>
         </div>
-      </div>
-    </section>
-  );
-}
+        <div className="grid gap-3 xl:grid-cols-3">
+          {decisionRows.slice(0, 9).map((row) => (
+            <div key={row.symbol} className="rounded-md border border-white/10 bg-black/24 p-3">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium">{row.symbol}</div>
+                  <div className="truncate text-xs text-muted">{row.companyName}</div>
+                </div>
+                <span className={`rounded-md border px-2 py-1 text-xs ${decisionBadgeTone(row.action)}`}>
+                  {row.action}
+                </span>
+              </div>
+              <div className="mb-3 grid grid-cols-3 gap-2">
+                <DecisionMiniStat label="Score" value={`${row.score}`} tone={scoreTone(row.score)} />
+                <DecisionMiniStat label="Conviction" value={`${row.conviction}`} tone={scoreTone(row.conviction)} />
+                <DecisionMiniStat label="Confidence" value={`${row.confidence}`} tone={scoreTone(row.confidence)} />
+              </div>
+              <div className="text-sm leading-5 text-foreground/82">{row.reason}</div>
+              <div className="mt-3 rounded-md border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-muted">
+                {row.entryDiscipline}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+    );
+  }
 
-function ProgressRail({ percent, tone }: { percent: number; tone: "teal" | "cyan" | "green" | "amber" | "rose" | "violet" }) {
-  const gradient =
-    tone === "green"
-      ? "from-emerald-300 via-teal-200 to-emerald-300"
-      : tone === "amber"
-        ? "from-amber via-orange-300 to-amber"
-        : tone === "rose"
-          ? "from-rose-400 via-orange-300 to-rose-400"
-          : tone === "violet"
-            ? "from-violet-300 via-cyan-200 to-violet-300"
-            : "from-cyan-300 via-teal-200 to-cyan-300";
+  if (tile === "warnings") {
+    const warnings = [
+      ...(analytics?.warnings ?? []),
+      ...(analytics?.sanityChecks.filter((check) => check.status !== "pass").map((check) => `${check.label}: ${check.detail}`) ?? []),
+      ...(insight?.dataWarnings ?? [])
+    ];
+
+    return (
+      <section className="rounded-md border border-amber/20 bg-amber/10 p-4">
+        <div className="mb-3 flex items-center gap-2 text-amber">
+          <AlertTriangle size={18} />
+          <h3 className="text-base font-semibold text-foreground">Sanity checks and warnings</h3>
+        </div>
+        <div className="grid gap-2 md:grid-cols-2">
+          {warnings.length ? (
+            warnings.map((warning, index) => (
+              <div key={`${warning}-${index}`} className="rounded-md border border-amber/15 bg-black/18 p-3 text-sm leading-5 text-amber/90">
+                <AiFormattedText text={warning} />
+              </div>
+            ))
+          ) : (
+            <div className="rounded-md border border-profit/18 bg-profit/10 p-3 text-sm leading-5 text-profit">
+              No current provider, sanity or AI data warnings.
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <div className="h-2 overflow-hidden rounded-full bg-black/50">
-      <motion.div
-        initial={{ width: 0 }}
-        animate={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
-        transition={{ duration: 0.75, ease: "easeOut" }}
-        className={`h-2 rounded-full bg-gradient-to-r ${gradient}`}
-      />
-    </div>
+    <section className="grid gap-4">
+      <div className="rounded-md border border-cyan-200/14 bg-white/[0.045] p-4">
+        <div className="mb-2 flex items-center gap-2 text-cyan-100">
+          <CircuitBoard size={18} />
+          <h3 className="text-base font-semibold text-foreground">Manual analytics engine output</h3>
+        </div>
+        <p className="text-sm leading-6 text-foreground/84">
+          {analytics?.summary ?? "Run Full Analytics to calculate the deterministic evidence pack."}
+        </p>
+      </div>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <AnalyticsHeroTile icon={<Sparkles size={18} />} label="BI Quality" value={analytics ? `${analytics.dataQualityScore}/100` : "Waiting"} detail={analytics ? `Next refresh ${formatShortDateTime(analytics.nextRefreshAt)}` : "Fetching providers"} tone="teal" />
+        <AnalyticsHeroTile icon={<Building2 size={18} />} label="Companies" value={`${analytics?.companies.length ?? 0}`} detail={analytics ? analytics.modelVersion : "Holdings analyzed"} tone="sky" />
+        <AnalyticsHeroTile icon={<CheckCircle2 size={18} />} label="Strong" value={`${analytics?.companies.filter((company) => company.overallScore >= 72).length ?? 0}`} detail="Score 72+" tone="green" />
+        <AnalyticsHeroTile icon={<ShieldCheck size={18} />} label="Sanity" value={analytics?.sanityChecks.some((check) => check.status !== "pass") ? "Watch" : "Passed"} detail="Coverage and score checks" tone="amber" />
+      </div>
+      {analytics?.sanityChecks.length ? (
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+          {analytics.sanityChecks.map((check) => (
+            <div key={check.label} className="rounded-md border border-white/10 bg-black/22 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{check.label}</span>
+                <span className={sanityTone(check.status)}>{check.status}</span>
+              </div>
+              <p className="text-xs leading-5 text-muted">{check.detail}</p>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
@@ -3419,6 +3294,124 @@ function formatElapsed(totalSeconds: number) {
 
 type PipelineTone = "teal" | "cyan" | "green" | "amber" | "rose" | "violet";
 
+function DataProvenancePanel({ analytics }: { analytics?: PortfolioAnalytics }) {
+  const profile = buildDataProvenanceProfile(analytics);
+  const gateTone =
+    profile.analyticsReadiness >= 75 && profile.blockers === 0
+      ? "text-profit"
+      : profile.analyticsReadiness >= 55
+        ? "text-amber"
+        : "text-loss";
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-cyan-200/14 bg-[#061117] p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+        <div className="max-w-3xl">
+          <div className="mb-2 flex items-center gap-2 text-sm text-cyan-100">
+            <DatabaseZap size={18} />
+            Data provenance and validation
+          </div>
+          <h3 className="text-xl font-semibold tracking-normal">What enters analytics, and how clean is it?</h3>
+          <p className="mt-2 text-sm leading-6 text-cyan-50/70">
+            Holdings, market feeds, fundamentals and news are fetched, sanitized, cross-checked, scored by sanity checks, then passed into analytics with warnings and coverage penalties attached.
+          </p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-black/28 p-3 text-right">
+          <div className="text-xs uppercase tracking-[0.18em] text-muted">Analytics gate</div>
+          <div className={`mt-1 text-2xl font-semibold ${gateTone}`}>{profile.analyticsReadiness}%</div>
+          <div className="mt-1 text-xs text-muted">
+            {profile.blockers ? `${profile.blockers} blocker(s)` : "Ready with warnings"}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="rounded-lg border border-white/10 bg-black/22 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+            <RadioTower className="text-cyan-100" size={18} />
+            Source mix
+          </div>
+          <div className="space-y-3">
+            {profile.sources.map((source) => (
+              <div key={source.label}>
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-medium text-foreground">{source.label}</div>
+                    <div className="text-xs leading-5 text-muted">{source.detail}</div>
+                  </div>
+                  <div className="text-sm font-semibold text-cyan-100">{source.percent}%</div>
+                </div>
+                <ProgressRail percent={source.percent} tone={source.tone} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid gap-3">
+          <div className="rounded-lg border border-white/10 bg-black/22 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <ListChecks className="text-profit" size={18} />
+              Processing stages
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {profile.stages.map((stage) => (
+                <div key={stage.label} className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{stage.label}</span>
+                    <span className="text-sm text-cyan-100">{stage.percent}%</span>
+                  </div>
+                  <ProgressRail percent={stage.percent} tone={stage.tone} />
+                  <div className="mt-2 text-xs leading-5 text-muted">{stage.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-black/22 p-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+              <ShieldCheck className="text-amber" size={18} />
+              Sanity checks
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {profile.checks.map((check) => (
+                <div key={check.label} className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+                  <div className="mb-1 flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium">{check.label}</span>
+                    <span className={sanityTone(check.status)}>{check.status}</span>
+                  </div>
+                  <div className="text-xs leading-5 text-muted">{check.detail}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProgressRail({ percent, tone }: { percent: number; tone: PipelineTone }) {
+  const className = {
+    teal: "bg-teal-300",
+    cyan: "bg-cyan-300",
+    green: "bg-profit",
+    amber: "bg-amber",
+    rose: "bg-loss",
+    violet: "bg-violet-300"
+  }[tone];
+
+  return (
+    <div className="h-2 overflow-hidden rounded-full bg-black/40">
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+        transition={{ duration: 0.5, ease: "easeOut" }}
+        className={`h-full rounded-full ${className}`}
+      />
+    </div>
+  );
+}
+
 function buildDataProvenanceProfile(analytics?: PortfolioAnalytics) {
   const companies = analytics?.companies ?? [];
   const companyCount = companies.length;
@@ -3543,19 +3536,6 @@ function scoreTone(score: number) {
     return "text-amber";
   }
   return "text-loss";
-}
-
-function metricTone(tone: CompanyAnalytics["financials"][number]["tone"]) {
-  if (tone === "good") {
-    return "text-profit";
-  }
-  if (tone === "watch") {
-    return "text-amber";
-  }
-  if (tone === "bad") {
-    return "text-loss";
-  }
-  return "text-foreground";
 }
 
 function sanityTone(status: PortfolioAnalytics["sanityChecks"][number]["status"]) {

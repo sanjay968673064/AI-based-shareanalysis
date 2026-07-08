@@ -1,6 +1,6 @@
 from src.schemas.analytics import AnalyticsMetricRead, CompanyAnalyticsRead, CompanyNewsRead
 from src.services.intelligence_providers import MarketSnapshot
-from src.services.company_analytics_service import CompanyAnalyticsService, MODEL_VERSION
+from src.services.company_analytics_service import CompanyAnalyticsService, MODEL_VERSION, SCORING_WEIGHTS
 
 
 def _company(symbol: str = "INFY", score: int = 82) -> CompanyAnalyticsRead:
@@ -93,3 +93,32 @@ def test_company_analytics_withholds_unverified_live_price() -> None:
     assert company.last_price is None
     assert company.day_change_pct is None
     assert any("Withheld live price" in note for note in company.source_notes)
+
+
+def test_weighted_scoring_engine_uses_required_multi_factor_weights() -> None:
+    service = CompanyAnalyticsService(portfolio_repo=None)
+
+    final_score = service._weighted_final_score(
+        fundamental=80,
+        technical=70,
+        valuation=60,
+        risk=50,
+        governance=40,
+        sector=30,
+        news=20,
+        sentiment=10,
+    )
+
+    assert sum(SCORING_WEIGHTS.values()) == 1
+    assert final_score == 62
+
+
+def test_recommendation_bands_follow_final_score_and_risk_gate() -> None:
+    service = CompanyAnalyticsService(portfolio_repo=None)
+
+    assert service._recommendation(96, risk=70) == "Strong Conviction Buy"
+    assert service._recommendation(82, risk=70) == "Buy"
+    assert service._recommendation(64, risk=70) == "Hold"
+    assert service._recommendation(45, risk=70) == "Reduce"
+    assert service._recommendation(35, risk=70) == "Sell"
+    assert service._recommendation(82, risk=20) == "Reduce"

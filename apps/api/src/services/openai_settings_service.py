@@ -63,6 +63,9 @@ class OpenAiSettingsService:
         await self._settings_repo.delete(context, self._model_setting(provider))
         return await self.read(context)
 
+    async def store_encrypted_json(self, context: UserContext, key: str, value: str) -> None:
+        await self._settings_repo.upsert(context, key, token_cipher.encrypt(value))
+
     async def get_provider(self, context: UserContext) -> AiProvider:
         encrypted = await self._settings_repo.get(context, AI_PROVIDER_SETTING)
         provider = token_cipher.decrypt(encrypted) if encrypted else "gemini"

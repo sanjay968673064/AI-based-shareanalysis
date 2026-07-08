@@ -3,6 +3,7 @@ from datetime import UTC, date, datetime
 
 from src.core.config import settings
 from src.db.session import SessionLocal
+from src.repositories.app_settings import AppSettingsRepository
 from src.repositories.audit import AuditLogRepository
 from src.repositories.portfolio import PortfolioRepository
 from src.repositories.recommendation_history import RecommendationHistoryRepository
@@ -55,7 +56,7 @@ class DailyRefreshService:
             async with SessionLocal() as session:
                 portfolio_repo = PortfolioRepository(session)
                 audit_repo = AuditLogRepository(session)
-                await CompanyAnalyticsService(portfolio_repo).analyze(context, force_refresh=True)
+                await CompanyAnalyticsService(portfolio_repo, AppSettingsRepository(session)).analyze(context, force_refresh=True)
                 await IntelligenceService(
                     portfolio_repo,
                     RecommendationHistoryRepository(session),

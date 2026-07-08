@@ -5,7 +5,6 @@ from typing import Any
 import httpx
 
 from src.core.config import settings
-from src.core.security import token_cipher
 from src.domain.auth import UserContext
 from src.repositories.app_settings import AppSettingsRepository
 from src.schemas.ai_config import AiAnalyticsInsightRead, AiProvider
@@ -78,10 +77,10 @@ class OpenAiAnalyticsService:
             return result
 
     async def _store_latest(self, context: UserContext, result: AiAnalyticsInsightRead) -> None:
-        await self._settings._settings_repo.upsert(
+        await self._settings.store_encrypted_json(
             context,
             "latest_ai_analytics_snapshot",
-            token_cipher.encrypt(result.model_dump_json(by_alias=True)),
+            result.model_dump_json(by_alias=True),
         )
 
     async def _call_openai(self, api_key: str, model: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -211,14 +210,36 @@ class OpenAiAnalyticsService:
                     "fiftyTwoWeekLow": company.fifty_two_week_low,
                     "fiftyTwoWeekHigh": company.fifty_two_week_high,
                     "overallScore": company.overall_score,
+                    "finalScore": company.final_score,
+                    "confidence": company.confidence,
+                    "investmentHorizon": company.investment_horizon,
+                    "intrinsicValue": company.intrinsic_value,
+                    "fairValue": company.fair_value,
+                    "expectedUpside": company.expected_upside,
+                    "stopLoss": company.stop_loss,
+                    "target1": company.target1,
+                    "target2": company.target2,
+                    "target3": company.target3,
+                    "fundamentalScore": company.fundamental_score,
                     "balanceSheetScore": company.balance_sheet_score,
                     "growthScore": company.growth_score,
                     "cashFlowScore": company.cash_flow_score,
+                    "technicalScore": company.technical_score,
                     "valuationScore": company.valuation_score,
+                    "governanceScore": company.governance_score,
+                    "riskScore": company.risk_score,
+                    "sectorScore": company.sector_score,
+                    "newsScore": company.news_score,
+                    "sentimentScore": company.sentiment_score,
+                    "scoringWeights": company.scoring_weights,
                     "recommendation": company.recommendation,
                     "planning": company.planning,
                     "strengths": company.strengths[:3],
                     "concerns": company.concerns[:3],
+                    "weaknesses": company.weaknesses[:3],
+                    "risks": company.risks[:3],
+                    "catalysts": company.catalysts[:3],
+                    "explanation": company.explanation,
                     "financials": [
                         metric.model_dump(mode="json", by_alias=True) for metric in company.financials
                     ],
@@ -336,7 +357,9 @@ class OpenAiAnalyticsService:
             "portfolio holdings in the companies array. Never invent holdings, prices, ratios, financial statement data, "
             "news, targets, broker calls, dates, or guarantees. Treat the backend model scores, decisionSignals, sanityChecks, "
             "sourceNotes, financials, price position, growth, balance-sheet quality, cash-flow strength, valuation score and "
-            "news headlines as the evidence base.\n\n"
+            "news headlines as the evidence base. The deterministic engine is the source of truth for recommendation labels, "
+            "targets, stop loss, confidence and finalScore. Never create a Buy, Sell, Hold, target price or stop-loss opinion "
+            "unless it is grounded in the weighted factor scores supplied in the JSON payload.\n\n"
             "Return strict JSON only with these exact keys: summary, buyFocus, holdFocus, sellOrReviewFocus, riskControls, "
             "dataWarnings. Do not include markdown, explanations outside JSON, or extra keys.\n\n"
             "Formatting rules:\n"
@@ -360,6 +383,7 @@ class OpenAiAnalyticsService:
             "stale or partial news, missing live prices, or provider coverage gaps.\n\n"
             "Decision discipline:\n"
             "- Use symbols in every list item where possible.\n"
+            "- Explain the deterministic weighted score drivers instead of relying on any single indicator.\n"
             "- Do not say 'guaranteed', 'sure shot', or 'must buy'. Use decision-support language.\n"
             "- Prefer staged actions such as add slowly, hold, wait, review, trim only if risk persists.\n"
             "- If dataQualityScore is below 70 or any sanity check is watch/fail, make verification a prominent warning.\n"

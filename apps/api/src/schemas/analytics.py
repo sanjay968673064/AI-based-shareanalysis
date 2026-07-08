@@ -38,10 +38,32 @@ class CompanyAnalyticsRead(BaseModel):
     growth_score: int = Field(serialization_alias="growthScore")
     cash_flow_score: int = Field(serialization_alias="cashFlowScore")
     valuation_score: int = Field(serialization_alias="valuationScore")
+    fundamental_score: int = Field(default=0, serialization_alias="fundamentalScore")
+    technical_score: int = Field(default=0, serialization_alias="technicalScore")
+    governance_score: int = Field(default=50, serialization_alias="governanceScore")
+    risk_score: int = Field(default=50, serialization_alias="riskScore")
+    sector_score: int = Field(default=50, serialization_alias="sectorScore")
+    news_score: int = Field(default=50, serialization_alias="newsScore")
+    sentiment_score: int = Field(default=50, serialization_alias="sentimentScore")
+    final_score: int = Field(default=0, serialization_alias="finalScore")
+    confidence: int = 0
+    investment_horizon: str = Field(default="Review after next earnings cycle", serialization_alias="investmentHorizon")
+    intrinsic_value: float | None = Field(default=None, serialization_alias="intrinsicValue")
+    fair_value: float | None = Field(default=None, serialization_alias="fairValue")
+    expected_upside: float | None = Field(default=None, serialization_alias="expectedUpside")
+    stop_loss: float | None = Field(default=None, serialization_alias="stopLoss")
+    target1: float | None = None
+    target2: float | None = None
+    target3: float | None = None
     recommendation: str
     planning: str
     strengths: list[str]
     concerns: list[str]
+    weaknesses: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    catalysts: list[str] = Field(default_factory=list)
+    explanation: str = ""
+    scoring_weights: dict[str, float] = Field(default_factory=dict, serialization_alias="scoringWeights")
     financials: list[AnalyticsMetricRead]
     news: list[CompanyNewsRead]
     source_notes: list[str] = Field(serialization_alias="sourceNotes")
