@@ -4,11 +4,13 @@ import {
   portfolioAnalyticsSchema,
   portfolioIntelligenceSchema,
   portfolioSummarySchema,
+  stockDiscoverySchema,
   type AiAnalyticsInsight,
   type OpenAiSettings,
   type PortfolioAnalytics,
   type PortfolioIntelligence,
-  type PortfolioSummary
+  type PortfolioSummary,
+  type StockDiscovery
 } from "@portfolio/shared";
 
 import { fallbackPortfolio } from "@/lib/mock-data";
@@ -174,6 +176,17 @@ export async function runOpenAiAnalyticsInsight(): Promise<AiAnalyticsInsight> {
     throw new Error(`AI analytics insight returned ${response.status}`);
   }
   return aiAnalyticsInsightSchema.parse(await response.json());
+}
+
+export async function fetchStockDiscovery(): Promise<StockDiscovery> {
+  const response = await fetch(`${apiBaseUrl}/api/v1/discovery/new-shares`, {
+    headers: authHeaders(),
+    cache: "no-store"
+  });
+  if (!response.ok) {
+    throw new Error(`Stock discovery API returned ${response.status}`);
+  }
+  return stockDiscoverySchema.parse(await response.json());
 }
 
 export async function createZerodhaReadOnlyConnection(input: ZerodhaConnectInput): Promise<ReadOnlyConnectResponse> {

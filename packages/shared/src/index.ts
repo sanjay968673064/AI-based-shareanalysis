@@ -173,6 +173,35 @@ export const aiAnalyticsInsightSchema = z.object({
   dataWarnings: z.array(z.string())
 });
 
+export const discoveryCandidateSchema = z.object({
+  symbol: z.string(),
+  companyName: z.string(),
+  sector: z.string().nullable().optional(),
+  industry: z.string().nullable().optional(),
+  lastPrice: z.number().nullable().optional(),
+  discoveryScore: z.number(),
+  conviction: z.enum(["High", "Medium", "Low"]),
+  riskLevel: z.enum(["Low", "Medium", "High"]),
+  recommendation: z.string(),
+  whyBuy: z.array(z.string()),
+  companyPotential: z.array(z.string()),
+  risks: z.array(z.string()),
+  entryDiscipline: z.string(),
+  verificationTriggers: z.array(z.string()),
+  researchView: z.string(),
+  dataQualityScore: z.number(),
+  sourceNotes: z.array(z.string())
+});
+
+export const stockDiscoverySchema = z.object({
+  generatedAt: z.string(),
+  universe: z.string(),
+  methodology: z.string(),
+  candidates: z.array(discoveryCandidateSchema),
+  excludedSymbols: z.array(z.string()),
+  warnings: z.array(z.string())
+});
+
 export type Holding = z.infer<typeof holdingSchema>;
 export type Allocation = z.infer<typeof allocationSchema>;
 export type PortfolioSummary = z.infer<typeof portfolioSummarySchema>;
@@ -187,3 +216,5 @@ export type AnalyticsSanityCheck = z.infer<typeof analyticsSanityCheckSchema>;
 export type PortfolioAnalytics = z.infer<typeof portfolioAnalyticsSchema>;
 export type OpenAiSettings = z.infer<typeof openAiSettingsSchema>;
 export type AiAnalyticsInsight = z.infer<typeof aiAnalyticsInsightSchema>;
+export type DiscoveryCandidate = z.infer<typeof discoveryCandidateSchema>;
+export type StockDiscovery = z.infer<typeof stockDiscoverySchema>;

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type DashboardView = "overview" | "risk" | "reports" | "analytics" | "ai";
+type DashboardView = "overview" | "risk" | "reports" | "analytics" | "discover" | "ai";
 
 type UiState = {
   view: DashboardView;

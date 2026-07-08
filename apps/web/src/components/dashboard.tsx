@@ -42,7 +42,8 @@ import type {
   OpenAiSettings,
   PortfolioAnalytics,
   PortfolioIntelligence,
-  PortfolioSummary
+  PortfolioSummary,
+  StockDiscovery
 } from "@portfolio/shared";
 
 import { ManualPortfolioUpload } from "@/components/manual-portfolio-upload";
@@ -56,6 +57,7 @@ import {
   fetchZerodhaStatus,
   fetchPortfolioIntelligence,
   fetchPortfolioSummary,
+  fetchStockDiscovery,
   runDailyAnalyticsRefresh,
   runOpenAiAnalyticsInsight,
   runPortfolioIntelligence,
@@ -66,7 +68,7 @@ import { formatCurrency, formatPercent } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useUiStore } from "@/store/ui-store";
 
-type DashboardView = "overview" | "risk" | "reports" | "analytics" | "ai";
+type DashboardView = "overview" | "risk" | "reports" | "analytics" | "discover" | "ai";
 type NavItem = [DashboardView, typeof BriefcaseBusiness, string];
 type ReportAction = {
   priority: "High" | "Medium" | "Low";
@@ -77,6 +79,8 @@ type ReportAction = {
 type ReportSection = "summary" | "actions" | "analytics" | "quality" | "calendar";
 type OverviewTileId = "pulse" | "capital" | "performance" | "sync";
 type AiProvider = "gemini" | "openai";
+type InvestorRiskProfile = "conservative" | "balanced" | "aggressive";
+type InvestorHorizon = "short" | "swing" | "long";
 
 const RECOMMENDED_GEMINI_MODEL = "gemini-3.5-flash";
 const GEMINI_MODEL_OPTIONS = [
@@ -180,6 +184,15 @@ export function Dashboard() {
   const { data: openAiSettings, refetch: refetchOpenAiSettings } = useQuery({
     queryKey: ["openai-settings"],
     queryFn: fetchOpenAiSettings
+  });
+  const {
+    data: discovery,
+    isFetching: isFetchingDiscovery,
+    refetch: refetchDiscovery
+  } = useQuery({
+    queryKey: ["stock-discovery"],
+    queryFn: fetchStockDiscovery,
+    staleTime: 30 * 60 * 1000
   });
   const [isConnecting, setIsConnecting] = useState(false);
   const [isSyncingMcp, setIsSyncingMcp] = useState(false);
@@ -461,6 +474,7 @@ export function Dashboard() {
               ["risk", ShieldCheck, "Risk"],
               ["reports", CalendarClock, "Reports"],
               ["analytics", Building2, "Analytics"],
+              ["discover", Search, "Discover"],
               ["ai", Bot, "AI Analysis"]
             ] satisfies NavItem[]).map(([id, Icon, label]) => (
               <button
@@ -525,6 +539,14 @@ export function Dashboard() {
                     const latest = await fetchPortfolioAnalytics(true);
                     queryClient.setQueryData(["portfolio-analytics"], latest);
                     await refetchAnalytics();
+                  }}
+                />
+              ) : view === "discover" ? (
+                <StockDiscoveryView
+                  discovery={discovery}
+                  isLoading={isFetchingDiscovery}
+                  onRefresh={async () => {
+                    await refetchDiscovery();
                   }}
                 />
               ) : view === "reports" ? (

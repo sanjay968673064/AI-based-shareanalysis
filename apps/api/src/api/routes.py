@@ -8,6 +8,7 @@ from src.api.dependencies import (
     get_openai_analytics_service,
     get_openai_settings_service,
     get_portfolio_service,
+    get_stock_discovery_service,
     get_user_context,
 )
 from src.core.security import create_session_token
@@ -17,6 +18,7 @@ from src.integrations.kite_mcp import BrokerConfigurationError
 from src.schemas.ai_config import AiAnalyticsInsightRead, OpenAiSettingsRead, OpenAiSettingsUpdate
 from src.schemas.analytics import PortfolioAnalyticsRead
 from src.schemas.auth import AuthSessionRead, AuthUserRead, LoginRequest, RegisterRequest
+from src.schemas.discovery import StockDiscoveryRead
 from src.schemas.intelligence import (
     IntelligenceReportRead,
     PortfolioAlertRead,
@@ -35,6 +37,7 @@ from src.services.intelligence_service import IntelligenceService
 from src.services.openai_analytics_service import OpenAiAnalyticsService
 from src.services.openai_settings_service import OpenAiSettingsService
 from src.services.portfolio_service import PortfolioService
+from src.services.stock_discovery_service import StockDiscoveryService
 
 router = APIRouter()
 
@@ -216,6 +219,18 @@ async def company_analytics(
     service: CompanyAnalyticsService = Depends(get_company_analytics_service),
 ) -> PortfolioAnalyticsRead:
     return await service.analyze(context, force_refresh=force_refresh)
+
+
+@router.get(
+    "/api/v1/discovery/new-shares",
+    response_model=StockDiscoveryRead,
+    response_model_by_alias=True,
+)
+async def stock_discovery(
+    context: UserContext = Depends(get_user_context),
+    service: StockDiscoveryService = Depends(get_stock_discovery_service),
+) -> StockDiscoveryRead:
+    return await service.discover(context)
 
 
 @router.post("/api/v1/analytics/daily-refresh")

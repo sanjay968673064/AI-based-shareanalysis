@@ -17,6 +17,7 @@ from src.services.intelligence_service import IntelligenceService
 from src.services.openai_analytics_service import OpenAiAnalyticsService
 from src.services.openai_settings_service import OpenAiSettingsService
 from src.services.portfolio_service import PortfolioService
+from src.services.stock_discovery_service import StockDiscoveryService
 
 
 async def get_user_context(
@@ -66,3 +67,7 @@ def get_openai_settings_service(session: AsyncSession = Depends(get_session)) ->
 
 def get_openai_analytics_service(session: AsyncSession = Depends(get_session)) -> OpenAiAnalyticsService:
     return OpenAiAnalyticsService(AppSettingsRepository(session))
+
+
+def get_stock_discovery_service(session: AsyncSession = Depends(get_session)) -> StockDiscoveryService:
+    return StockDiscoveryService(PortfolioRepository(session))
