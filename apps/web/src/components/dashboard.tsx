@@ -22,6 +22,7 @@ import {
   LineChart,
   LinkIcon,
   ListChecks,
+  LogOut,
   Newspaper,
   PieChart,
   RefreshCw,
@@ -30,6 +31,7 @@ import {
   Sparkles,
   Target,
   TrendingUp,
+  UserCircle,
   Wallet,
   X
 } from "lucide-react";
@@ -63,6 +65,7 @@ import {
   syncZerodhaMcpHoldings
 } from "@/lib/api";
 import { formatCurrency, formatPercent } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import { useUiStore } from "@/store/ui-store";
 
 type DashboardView = "overview" | "risk" | "reports" | "analytics" | "ai";
@@ -146,6 +149,7 @@ const AI_ANALYSIS_STEPS = [
 ];
 
 export function Dashboard() {
+  const auth = useAuth();
   const { view, setView } = useUiStore();
   const queryClient = useQueryClient();
   const { data, isFetching, refetch } = useQuery({
@@ -440,6 +444,13 @@ export function Dashboard() {
             <Button onClick={() => setIsConnectPanelOpen(true)} disabled={isConnecting}>
               <LinkIcon size={18} />
               Connect Zerodha
+            </Button>
+            <div className="flex h-10 items-center gap-2 rounded-md border border-border bg-white/5 px-3 text-sm text-muted">
+              <UserCircle size={18} />
+              <span className="max-w-[150px] truncate">{auth.user?.email ?? "Account"}</span>
+            </div>
+            <Button variant="ghost" onClick={() => void auth.logout()} title="Sign out" aria-label="Sign out">
+              <LogOut size={18} />
             </Button>
           </div>
           {connectError ? <p className="basis-full text-right text-sm text-loss">{connectError}</p> : null}
@@ -752,6 +763,11 @@ function PortfolioOverview({
         ))}
       </div>
 
+      <DecisionReadinessBanner
+        qualityScore={intelligence?.dataQuality.score ?? 0}
+        warnings={intelligence?.dataQuality.warnings ?? ["Run live analysis to calculate data quality before acting."]}
+      />
+
       <div className="grid gap-4 p-4 xl:grid-cols-[1.25fr_0.75fr]">
         <Card className="overflow-hidden border-cyan-200/12 bg-black/22 p-0 shadow-none">
           <div className="flex items-center justify-between border-b border-cyan-200/10 p-4">
@@ -795,6 +811,56 @@ function PortfolioOverview({
         </div>
       </div>
     </div>
+  );
+}
+
+function DecisionReadinessBanner({ qualityScore, warnings }: { qualityScore: number; warnings: string[] }) {
+  const readiness =
+    qualityScore >= 75
+      ? {
+          label: "Decision-ready with verification",
+          tone: "border-profit/20 bg-profit/10 text-profit",
+          detail: "Use the calls as a shortlist, then confirm valuation, trend, news and position sizing before buying or trimming."
+        }
+      : qualityScore >= 55
+        ? {
+            label: "Verify before action",
+            tone: "border-amber/22 bg-amber/10 text-amber",
+            detail: "Treat recommendations as review prompts until missing data and sanity checks are confirmed."
+          }
+        : {
+            label: "Watchlist only",
+            tone: "border-loss/22 bg-loss/10 text-loss",
+            detail: "Do not buy or sell from this output alone. Improve market data, fundamentals and broker sync first."
+          };
+
+  return (
+    <section className="border-b border-cyan-200/10 bg-black/22 p-4">
+      <div className={`rounded-md border p-4 ${readiness.tone}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2 text-base font-semibold">
+              <ShieldCheck size={18} />
+              {readiness.label}
+            </div>
+            <p className="mt-2 max-w-4xl text-sm leading-6 text-current/82">{readiness.detail}</p>
+          </div>
+          <div className="rounded-md border border-current/20 bg-black/22 px-3 py-2 text-right">
+            <div className="text-xs text-current/70">Data quality</div>
+            <div className="text-xl font-semibold text-foreground">{qualityScore}/100</div>
+          </div>
+        </div>
+        {warnings.length ? (
+          <div className="mt-3 grid gap-2 lg:grid-cols-2">
+            {warnings.slice(0, 4).map((warning) => (
+              <div key={warning} className="text-sm leading-5 text-current/78">
+                {warning}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 

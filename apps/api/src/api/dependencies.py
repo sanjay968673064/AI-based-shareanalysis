@@ -1,6 +1,7 @@
 from fastapi import Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.config import settings
 from src.db.session import get_session
 from src.domain.auth import UserContext
 from src.integrations.kite_mcp import KiteMcpClient
@@ -19,12 +20,18 @@ from src.services.portfolio_service import PortfolioService
 
 
 async def get_user_context(
-    x_user_id: str = Header(default="demo-user"),
+    authorization: str | None = Header(default=None),
+    x_user_id: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),
 ) -> UserContext:
-    context = await UserRepository(session).get_context_by_external_id(x_user_id)
+    user_repo = UserRepository(session)
+    context = None
+    if authorization and authorization.lower().startswith("bearer "):
+        context = await user_repo.get_context_by_session_token(authorization.split(" ", 1)[1].strip())
+    elif settings.allow_dev_user_header and x_user_id:
+        context = await user_repo.get_context_by_external_id(x_user_id)
     if context is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unknown user.")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sign in to continue.")
     return context
 
 

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     app_env: str = "development"
+    allow_dev_user_header: bool = False
     database_url: str = "postgresql+asyncpg://portfolio:portfolio@postgres:5432/portfolio"
     redis_url: str = "redis://redis:6379/0"
     encryption_key: str = "development-only-replace-me"

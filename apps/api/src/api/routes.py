@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.dependencies import (
     get_broker_service,
@@ -9,10 +10,13 @@ from src.api.dependencies import (
     get_portfolio_service,
     get_user_context,
 )
+from src.core.security import create_session_token
+from src.db.session import get_session
 from src.domain.auth import UserContext
 from src.integrations.kite_mcp import BrokerConfigurationError
 from src.schemas.ai_config import AiAnalyticsInsightRead, OpenAiSettingsRead, OpenAiSettingsUpdate
 from src.schemas.analytics import PortfolioAnalyticsRead
+from src.schemas.auth import AuthSessionRead, AuthUserRead, LoginRequest, RegisterRequest
 from src.schemas.intelligence import (
     IntelligenceReportRead,
     PortfolioAlertRead,
@@ -23,6 +27,7 @@ from src.schemas.portfolio import ManualPortfolioImportResponse, PortfolioSummar
 from src.services.csv_portfolio_parser import PortfolioCsvParseError
 from src.schemas.zerodha import BrokerStatusRead, ReadOnlyConnectRequest, ReadOnlyConnectResponse
 from src.schemas.zerodha import McpConnectResponse, McpSyncResponse
+from src.repositories.users import UserRepository
 from src.services.broker_service import BrokerService
 from src.services.company_analytics_service import CompanyAnalyticsService
 from src.services.daily_refresh_service import daily_refresh_service
@@ -36,6 +41,65 @@ router = APIRouter()
 
 @router.get("/health")
 async def health() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+def _auth_user(context: UserContext) -> AuthUserRead:
+    return AuthUserRead(
+        id=str(context.user_id),
+        email=context.email,
+        fullName=context.full_name,
+        tenantId=str(context.tenant_id),
+    )
+
+
+@router.post("/api/v1/auth/register", response_model=AuthSessionRead, response_model_by_alias=True)
+async def register(
+    payload: RegisterRequest,
+    user_agent: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> AuthSessionRead:
+    repo = UserRepository(session)
+    try:
+        context = await repo.create_user_with_tenant(
+            email=payload.email,
+            password=payload.password,
+            full_name=payload.full_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    token, _ = create_session_token()
+    expires_at = await repo.create_session(context, token, user_agent)
+    return AuthSessionRead(token=token, expiresAt=expires_at, user=_auth_user(context))
+
+
+@router.post("/api/v1/auth/login", response_model=AuthSessionRead, response_model_by_alias=True)
+async def login(
+    payload: LoginRequest,
+    user_agent: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> AuthSessionRead:
+    repo = UserRepository(session)
+    context = await repo.authenticate(payload.email, payload.password)
+    if context is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+    token, _ = create_session_token()
+    expires_at = await repo.create_session(context, token, user_agent)
+    return AuthSessionRead(token=token, expiresAt=expires_at, user=_auth_user(context))
+
+
+@router.get("/api/v1/auth/me", response_model=AuthUserRead, response_model_by_alias=True)
+async def me(context: UserContext = Depends(get_user_context)) -> AuthUserRead:
+    return _auth_user(context)
+
+
+@router.post("/api/v1/auth/logout")
+async def logout(
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+) -> dict[str, str]:
+    if authorization and authorization.lower().startswith("bearer "):
+        await UserRepository(session).revoke_session(authorization.split(" ", 1)[1].strip())
     return {"status": "ok"}
 
 

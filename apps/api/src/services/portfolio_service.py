@@ -69,22 +69,14 @@ class PortfolioService:
             total_pnl=total_pnl,
             total_pnl_pct=(total_pnl / max(invested, 1)) * 100,
             health_score=health_score,
-            cash_balance=25000.0,
-            dividend_summary=3240.0,
+            cash_balance=0.0,
+            dividend_summary=0.0,
             ai_summary=ai_summary,
             holdings=holdings,
             sector_allocation=self._to_allocations(sector_values, portfolio_value),
             asset_allocation=self._to_allocations(asset_values, portfolio_value),
-            recent_transactions=[
-                "Bought 5 HDFCBANK",
-                "Dividend credited from INFY",
-                "Added RELIANCE to watchlist",
-            ],
-            upcoming_events=[
-                "Infosys quarterly results",
-                "HDFC Bank dividend date",
-                "RBI policy announcement",
-            ],
+            recent_transactions=[],
+            upcoming_events=[],
             updated_at=datetime.now(UTC),
         )
 

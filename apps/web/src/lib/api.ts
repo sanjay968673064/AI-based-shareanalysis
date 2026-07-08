@@ -12,6 +12,7 @@ import {
 } from "@portfolio/shared";
 
 import { fallbackPortfolio } from "@/lib/mock-data";
+import { authHeaders } from "@/lib/auth";
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -48,21 +49,27 @@ export type BrokerStatus = {
 export async function fetchPortfolioSummary(): Promise<PortfolioSummary> {
   try {
     const response = await fetch(`${apiBaseUrl}/api/v1/portfolio/summary`, {
-      headers: { "X-User-Id": "demo-user" },
+      headers: authHeaders(),
       cache: "no-store"
     });
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error("Sign in to continue.");
+      }
       throw new Error(`Portfolio API returned ${response.status}`);
     }
     return portfolioSummarySchema.parse(await response.json());
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message === "Sign in to continue.") {
+      throw error;
+    }
     return fallbackPortfolio;
   }
 }
 
 export async function fetchPortfolioIntelligence(): Promise<PortfolioIntelligence> {
   const response = await fetch(`${apiBaseUrl}/api/v1/intelligence/analysis`, {
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     cache: "no-store"
   });
   if (!response.ok) {
@@ -74,7 +81,7 @@ export async function fetchPortfolioIntelligence(): Promise<PortfolioIntelligenc
 export async function runPortfolioIntelligence(): Promise<PortfolioIntelligence> {
   const response = await fetch(`${apiBaseUrl}/api/v1/intelligence/run`, {
     method: "POST",
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     cache: "no-store"
   });
   if (!response.ok) {
@@ -85,7 +92,7 @@ export async function runPortfolioIntelligence(): Promise<PortfolioIntelligence>
 
 export async function fetchZerodhaStatus(): Promise<BrokerStatus> {
   const response = await fetch(`${apiBaseUrl}/api/v1/zerodha/status`, {
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     cache: "no-store"
   });
   if (!response.ok) {
@@ -100,7 +107,7 @@ export async function fetchPortfolioAnalytics(forceRefresh = false): Promise<Por
     params.set("forceRefresh", "true");
   }
   const response = await fetch(`${apiBaseUrl}/api/v1/analytics/company?${params.toString()}`, {
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     cache: "no-store"
   });
   if (!response.ok) {
@@ -112,7 +119,7 @@ export async function fetchPortfolioAnalytics(forceRefresh = false): Promise<Por
 export async function runDailyAnalyticsRefresh(): Promise<{ status: string; refreshedUsers: number }> {
   const response = await fetch(`${apiBaseUrl}/api/v1/analytics/daily-refresh`, {
     method: "POST",
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     cache: "no-store"
   });
   if (!response.ok) {
@@ -123,7 +130,7 @@ export async function runDailyAnalyticsRefresh(): Promise<{ status: string; refr
 
 export async function fetchOpenAiSettings(): Promise<OpenAiSettings> {
   const response = await fetch(`${apiBaseUrl}/api/v1/settings/openai`, {
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     cache: "no-store"
   });
   if (!response.ok) {
@@ -135,7 +142,7 @@ export async function fetchOpenAiSettings(): Promise<OpenAiSettings> {
 export async function saveOpenAiSettings(input: { apiKey: string; provider: "gemini" | "openai"; model?: string }): Promise<OpenAiSettings> {
   const response = await fetch(`${apiBaseUrl}/api/v1/settings/openai`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", "X-User-Id": "demo-user" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input)
   });
   if (!response.ok) {
@@ -149,7 +156,7 @@ export async function saveOpenAiSettings(input: { apiKey: string; provider: "gem
 export async function deleteOpenAiSettings(): Promise<OpenAiSettings> {
   const response = await fetch(`${apiBaseUrl}/api/v1/settings/openai`, {
     method: "DELETE",
-    headers: { "X-User-Id": "demo-user" }
+    headers: authHeaders()
   });
   if (!response.ok) {
     throw new Error(`AI settings delete returned ${response.status}`);
@@ -160,7 +167,7 @@ export async function deleteOpenAiSettings(): Promise<OpenAiSettings> {
 export async function runOpenAiAnalyticsInsight(): Promise<AiAnalyticsInsight> {
   const response = await fetch(`${apiBaseUrl}/api/v1/analytics/openai-insight`, {
     method: "POST",
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     cache: "no-store"
   });
   if (!response.ok) {
@@ -172,7 +179,7 @@ export async function runOpenAiAnalyticsInsight(): Promise<AiAnalyticsInsight> {
 export async function createZerodhaReadOnlyConnection(input: ZerodhaConnectInput): Promise<ReadOnlyConnectResponse> {
   const response = await fetch(`${apiBaseUrl}/api/v1/zerodha/connect/read-only`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-User-Id": "demo-user" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(input)
   });
   if (!response.ok) {
@@ -188,7 +195,7 @@ export async function uploadManualPortfolioCsv(file: File): Promise<ManualPortfo
   formData.append("file", file);
   const response = await fetch(`${apiBaseUrl}/api/v1/portfolio/manual-import`, {
     method: "POST",
-    headers: { "X-User-Id": "demo-user" },
+    headers: authHeaders(),
     body: formData
   });
   if (!response.ok) {
@@ -202,7 +209,7 @@ export async function uploadManualPortfolioCsv(file: File): Promise<ManualPortfo
 export async function createZerodhaMcpConnection(): Promise<McpConnectResponse> {
   const response = await fetch(`${apiBaseUrl}/api/v1/zerodha/mcp/connect`, {
     method: "POST",
-    headers: { "X-User-Id": "demo-user" }
+    headers: authHeaders()
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
@@ -215,7 +222,7 @@ export async function createZerodhaMcpConnection(): Promise<McpConnectResponse> 
 export async function syncZerodhaMcpHoldings(): Promise<ManualPortfolioImportResponse> {
   const response = await fetch(`${apiBaseUrl}/api/v1/zerodha/mcp/sync`, {
     method: "POST",
-    headers: { "X-User-Id": "demo-user" }
+    headers: authHeaders()
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => null);
