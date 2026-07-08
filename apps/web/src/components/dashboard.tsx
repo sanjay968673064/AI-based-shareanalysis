@@ -93,6 +93,7 @@ type OverviewTileId = "pulse" | "capital" | "performance" | "sync";
 type AiProvider = "gemini" | "openai";
 type InvestorRiskProfile = "conservative" | "balanced" | "aggressive";
 type InvestorHorizon = "short" | "swing" | "long";
+type MarketCapFilter = "all" | "Large Cap" | "Mid Cap" | "Small Cap";
 
 const RECOMMENDED_GEMINI_MODEL = "gemini-3.5-flash";
 const GEMINI_MODEL_OPTIONS = [
@@ -2078,12 +2079,23 @@ function StockDiscoveryView({
 }) {
   const [riskProfile, setRiskProfile] = useState<InvestorRiskProfile>("balanced");
   const [horizon, setHorizon] = useState<InvestorHorizon>("long");
+  const [marketCapFilter, setMarketCapFilter] = useState<MarketCapFilter>("all");
   const [capital, setCapital] = useState(100000);
   const [selectedSymbol, setSelectedSymbol] = useState("");
   const candidates = useMemo(() => discovery?.candidates ?? [], [discovery?.candidates]);
   const selected = candidates.find((item) => item.symbol === selectedSymbol) ?? candidates[0];
   const profile = getInvestorProfileConfig(riskProfile, horizon);
-  const filtered = candidates.filter((candidate) => profile.allows(candidate.riskLevel));
+  const filtered = candidates.filter(
+    (candidate) =>
+      profile.allows(candidate.riskLevel) &&
+      (marketCapFilter === "all" || candidate.marketCapCategory === marketCapFilter)
+  );
+  const validity = getDiscoveryValidity(discovery?.validUntil);
+  const capCounts = {
+    "Large Cap": candidates.filter((item) => item.marketCapCategory === "Large Cap").length,
+    "Mid Cap": candidates.filter((item) => item.marketCapCategory === "Mid Cap").length,
+    "Small Cap": candidates.filter((item) => item.marketCapCategory === "Small Cap").length,
+  };
 
   useEffect(() => {
     const saved = window.localStorage.getItem("investor-profile");
@@ -2126,7 +2138,7 @@ function StockDiscoveryView({
             </div>
             <h2 className="text-2xl font-semibold tracking-normal">Find new shares beyond your current portfolio</h2>
             <p className="mt-2 text-sm leading-6 text-sky-50/70">
-              The research engine scans a curated NSE universe, removes stocks you already hold, and ranks candidates by business quality, cash flow, growth, valuation discipline, news coverage and data quality.
+              Professional discovery scans large, mid and small-cap NSE candidates, removes stocks you already hold, scores fundamentals, valuation, quality, technical context and AI analysis, then expires the recommendation after 2 days.
             </p>
           </div>
           <Button type="button" onClick={onRefresh} disabled={isLoading}>
@@ -2136,7 +2148,7 @@ function StockDiscoveryView({
         </div>
       </div>
 
-      <div className="grid gap-3 border-b border-sky-200/10 bg-black/16 p-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 border-b border-sky-200/10 bg-black/16 p-4 md:grid-cols-2 xl:grid-cols-5">
         <ProfileControl
           label="Risk profile"
           value={riskProfile}
@@ -2157,6 +2169,17 @@ function StockDiscoveryView({
           ]}
           onChange={(value) => setHorizon(value as InvestorHorizon)}
         />
+        <ProfileControl
+          label="Market cap"
+          value={marketCapFilter}
+          options={[
+            ["all", "All caps"],
+            ["Large Cap", `Large (${capCounts["Large Cap"]})`],
+            ["Mid Cap", `Mid (${capCounts["Mid Cap"]})`],
+            ["Small Cap", `Small (${capCounts["Small Cap"]})`]
+          ]}
+          onChange={(value) => setMarketCapFilter(value as MarketCapFilter)}
+        />
         <label className="rounded-md border border-sky-200/12 bg-white/[0.045] p-3">
           <span className="mb-2 block text-xs text-muted">Deployable capital</span>
           <input
@@ -2169,9 +2192,18 @@ function StockDiscoveryView({
           />
         </label>
         <div className="rounded-md border border-sky-200/12 bg-white/[0.045] p-3">
-          <div className="text-xs text-muted">Profile rule</div>
-          <div className="mt-2 text-sm leading-5 text-sky-50/80">{profile.rule}</div>
+          <div className="text-xs text-muted">Recommendation validity</div>
+          <div className={`mt-2 text-sm leading-5 ${validity.expired ? "text-loss" : "text-sky-50/80"}`}>
+            {validity.label}
+          </div>
         </div>
+      </div>
+
+      <div className="grid gap-3 border-b border-sky-200/10 bg-black/22 p-4 md:grid-cols-2 xl:grid-cols-4">
+        <DiscoveryKpi label="Universe" value={discovery?.universe ?? "Loading"} detail={`${candidates.length} shortlisted ideas`} icon={<Database size={18} />} />
+        <DiscoveryKpi label="Large / Mid / Small" value={`${capCounts["Large Cap"]}/${capCounts["Mid Cap"]}/${capCounts["Small Cap"]}`} detail="Balanced cap buckets" icon={<PieChart size={18} />} />
+        <DiscoveryKpi label="Advisory expiry" value={validity.shortLabel} detail="Refresh after expiry for new shares" icon={<CalendarClock size={18} />} />
+        <DiscoveryKpi label="Profile rule" value={profile.label} detail={profile.rule} icon={<ShieldCheck size={18} />} />
       </div>
 
       <div className="grid gap-4 p-4 xl:grid-cols-[0.95fr_1.05fr]">
@@ -2211,6 +2243,9 @@ function StockDiscoveryView({
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className="rounded-md border border-cyan-200/16 bg-cyan-300/10 px-2 py-1 text-cyan-100">
+                    {candidate.marketCapCategory}
+                  </span>
                   <span className={`rounded-md border px-2 py-1 ${riskPill(candidate.riskLevel)}`}>{candidate.riskLevel} risk</span>
                   <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-muted">
                     Data {candidate.dataQualityScore}/100
@@ -2229,7 +2264,7 @@ function StockDiscoveryView({
             <>
               <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm text-sky-50/58">{selected.sector ?? "Sector unavailable"}</div>
+                  <div className="text-sm text-sky-50/58">{selected.marketCapCategory} · {selected.sector ?? "Sector unavailable"}</div>
                   <h3 className="text-2xl font-semibold">{selected.symbol}</h3>
                   <p className="text-sm text-muted">{selected.companyName}</p>
                 </div>
@@ -2245,10 +2280,31 @@ function StockDiscoveryView({
                 <ReportFact label="Starter size" value={formatCurrency(recommendedStarterSize(capital, selected.riskLevel, riskProfile))} />
               </div>
 
+              <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <AdvancedDiscoveryScore label="Fundamental" value={selected.fundamentalScore} />
+                <AdvancedDiscoveryScore label="Technical" value={selected.technicalScore} />
+                <AdvancedDiscoveryScore label="Valuation" value={selected.valuationScore} />
+                <AdvancedDiscoveryScore label="Quality" value={selected.qualityScore} />
+              </div>
+
               <div className="rounded-md border border-sky-200/12 bg-black/24 p-4">
                 <div className="mb-2 text-sm font-semibold text-sky-100">AI + research decision view</div>
                 <p className="text-sm leading-6 text-foreground/84">{selected.researchView}</p>
               </div>
+
+              {selected.aiView ? (
+                <div className="mt-4 rounded-md border border-violet-200/18 bg-violet-300/[0.08] p-4">
+                  <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-violet-100">
+                    <Bot size={18} />
+                    AI company analysis
+                  </div>
+                  <p className="text-sm leading-6 text-foreground/84">{selected.aiView}</p>
+                </div>
+              ) : (
+                <div className="mt-4 rounded-md border border-violet-200/12 bg-black/20 p-3 text-sm leading-6 text-muted">
+                  AI company analysis appears here after Gemini/OpenAI is configured. Deterministic research scoring is still available above.
+                </div>
+              )}
 
               <div className="mt-4 grid gap-3 xl:grid-cols-2">
                 <DiscoveryList title="Why consider buying" items={selected.whyBuy} tone="text-profit" />
@@ -2324,6 +2380,31 @@ function DiscoveryList({ title, items, tone }: { title: string; items: string[];
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function DiscoveryKpi({ label, value, detail, icon }: { label: string; value: string; detail: string; icon: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-sky-200/12 bg-white/[0.045] p-3">
+      <div className="mb-3 flex items-center justify-between gap-3 text-sky-100">
+        <span className="text-xs uppercase tracking-[0.18em] text-muted">{label}</span>
+        {icon}
+      </div>
+      <div className="truncate text-lg font-semibold text-foreground">{value}</div>
+      <div className="mt-1 text-xs leading-5 text-muted">{detail}</div>
+    </div>
+  );
+}
+
+function AdvancedDiscoveryScore({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-sky-200/12 bg-black/22 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-xs text-muted">{label}</span>
+        <span className={scoreTone(value)}>{value}</span>
+      </div>
+      <ProgressRail percent={value} tone={value >= 72 ? "green" : value >= 52 ? "amber" : "rose"} />
     </div>
   );
 }
@@ -3867,20 +3948,39 @@ function getInvestorProfileConfig(riskProfile: InvestorRiskProfile, horizon: Inv
 
   if (riskProfile === "conservative") {
     return {
+      label: "Conservative",
       rule: `Show low-risk candidates first; ${horizonText}.`,
       allows: (risk: string) => risk === "Low"
     };
   }
   if (riskProfile === "aggressive") {
     return {
+      label: "Aggressive",
       rule: `Allow higher-risk ideas, but use smaller starter sizes; ${horizonText}.`,
       allows: () => true
     };
   }
   return {
+    label: "Balanced",
     rule: `Prefer low/medium-risk candidates; ${horizonText}.`,
     allows: (risk: string) => risk !== "High"
   };
+}
+
+function getDiscoveryValidity(validUntil?: string) {
+  if (!validUntil) {
+    return { expired: false, label: "Waiting for scan", shortLabel: "Pending" };
+  }
+  const expiry = new Date(validUntil).getTime();
+  const remainingMs = expiry - Date.now();
+  if (Number.isNaN(expiry) || remainingMs <= 0) {
+    return { expired: true, label: "Expired. Refresh now for new shares.", shortLabel: "Expired" };
+  }
+  const hours = Math.ceil(remainingMs / (1000 * 60 * 60));
+  const days = Math.floor(hours / 24);
+  const remainderHours = hours % 24;
+  const label = days > 0 ? `${days}d ${remainderHours}h left` : `${hours}h left`;
+  return { expired: false, label: `Valid for ${label}`, shortLabel: label };
 }
 
 function recommendedStarterSize(capital: number, riskLevel: string, profile: InvestorRiskProfile) {

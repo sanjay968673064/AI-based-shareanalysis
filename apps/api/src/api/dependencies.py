@@ -70,4 +70,4 @@ def get_openai_analytics_service(session: AsyncSession = Depends(get_session)) -
 
 
 def get_stock_discovery_service(session: AsyncSession = Depends(get_session)) -> StockDiscoveryService:
-    return StockDiscoveryService(PortfolioRepository(session))
+    return StockDiscoveryService(PortfolioRepository(session), AppSettingsRepository(session))

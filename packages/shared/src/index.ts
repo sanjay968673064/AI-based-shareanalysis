@@ -178,8 +178,14 @@ export const discoveryCandidateSchema = z.object({
   companyName: z.string(),
   sector: z.string().nullable().optional(),
   industry: z.string().nullable().optional(),
+  marketCapCategory: z.enum(["Large Cap", "Mid Cap", "Small Cap"]),
   lastPrice: z.number().nullable().optional(),
   discoveryScore: z.number(),
+  fundamentalScore: z.number(),
+  technicalScore: z.number(),
+  valuationScore: z.number(),
+  qualityScore: z.number(),
+  opportunityRank: z.number(),
   conviction: z.enum(["High", "Medium", "Low"]),
   riskLevel: z.enum(["Low", "Medium", "High"]),
   recommendation: z.string(),
@@ -189,12 +195,14 @@ export const discoveryCandidateSchema = z.object({
   entryDiscipline: z.string(),
   verificationTriggers: z.array(z.string()),
   researchView: z.string(),
+  aiView: z.string().nullable().optional(),
   dataQualityScore: z.number(),
   sourceNotes: z.array(z.string())
 });
 
 export const stockDiscoverySchema = z.object({
   generatedAt: z.string(),
+  validUntil: z.string(),
   universe: z.string(),
   methodology: z.string(),
   candidates: z.array(discoveryCandidateSchema),

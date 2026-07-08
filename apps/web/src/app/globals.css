@@ -562,6 +562,35 @@ textarea {
   opacity: 1;
 }
 
+.data-pipeline-shell {
+  position: relative;
+  isolation: isolate;
+}
+
+.data-pipeline-shell::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(34, 211, 238, 0.18), transparent 34%),
+    radial-gradient(circle at 92% 20%, rgba(16, 185, 129, 0.13), transparent 32%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.06), transparent 46%, rgba(34, 211, 238, 0.08));
+}
+
+.data-pipeline-scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.34;
+  background:
+    linear-gradient(110deg, transparent 18%, rgba(34, 211, 238, 0.14) 44%, transparent 64%),
+    linear-gradient(rgba(125, 211, 252, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.045) 1px, transparent 1px);
+  background-size: 100% 100%, 32px 32px, 32px 32px;
+  animation: data-pipeline-scan 5.2s ease-in-out infinite, data-pipeline-grid 14s linear infinite;
+}
+
 @keyframes market-grid-drift {
   from {
     background-position: 0 0, 0 0;
@@ -698,6 +727,22 @@ textarea {
   }
 }
 
+@keyframes data-pipeline-scan {
+  0%,
+  56% {
+    background-position: -120% 0, 0 0, 0 0;
+  }
+  100% {
+    background-position: 120% 0, 0 0, 0 0;
+  }
+}
+
+@keyframes data-pipeline-grid {
+  to {
+    background-position: 0 0, 0 64px, 64px 0;
+  }
+}
+
 @keyframes market-laser-sweep {
   0%,
   100% {
@@ -738,7 +783,8 @@ textarea {
   .ai-orbital-core::after,
   .ai-orbital-track,
   .ai-orbital-spark,
-  .ai-orbital-center {
+  .ai-orbital-center,
+  .data-pipeline-scan {
     animation: none;
   }
 
