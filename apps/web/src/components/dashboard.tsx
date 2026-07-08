@@ -567,7 +567,7 @@ export function Dashboard() {
                   insight={aiInsight}
                   error={aiInsightError}
                   isRunning={isRunningUnifiedAnalytics}
-                  isReady={unifiedAnalyticsReady}
+                  isReady={unifiedAnalyticsReady || Boolean(aiInsight?.configured && analytics?.companies.length)}
                   onRun={handleRunUnifiedAnalytics}
                   onConfigure={() => setIsOpenAiPanelOpen(true)}
                 />
