@@ -6,7 +6,6 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
-  Bell,
   Bot,
   BriefcaseBusiness,
   Building2,
@@ -47,7 +46,6 @@ import type {
 } from "@portfolio/shared";
 
 import { ManualPortfolioUpload } from "@/components/manual-portfolio-upload";
-import { PortfolioChart } from "@/components/portfolio-chart";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -407,8 +405,9 @@ export function Dashboard() {
   const pnlTone = data.dayPnl >= 0 ? "text-profit" : "text-loss";
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="border-b border-border bg-black/30 backdrop-blur-xl">
+    <main className="relative min-h-screen overflow-hidden bg-background">
+      <MarketPulseFx />
+      <div className="relative z-10 border-b border-border bg-black/30 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-accent text-black">
@@ -420,9 +419,6 @@ export function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="ghost" title="Notifications" aria-label="Notifications">
-              <Bell size={18} />
-            </Button>
             <Button variant="ghost" onClick={() => refetch()} disabled={isFetching}>
               <RefreshCw size={18} className={isFetching ? "animate-spin" : ""} />
               Sync
@@ -457,7 +453,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[240px_1fr]">
+      <div className="relative z-10 mx-auto grid max-w-7xl gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[240px_1fr]">
         <aside className="hidden lg:block">
           <nav className="sticky top-5 space-y-2">
             {([
@@ -504,10 +500,10 @@ export function Dashboard() {
           <AnimatePresence mode="wait">
             <motion.div
               key={view}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              transition={{ duration: 0.22 }}
+              initial={{ opacity: 0, y: 18, scale: 0.985, filter: "blur(8px)" }}
+              animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+              exit={{ opacity: 0, y: -12, scale: 0.99, filter: "blur(6px)" }}
+              transition={{ duration: 0.34, ease: "easeOut" }}
               className="grid gap-5"
             >
               {view === "ai" ? (
@@ -769,18 +765,12 @@ function PortfolioOverview({
       />
 
       <div className="grid gap-4 p-4 xl:grid-cols-[1.25fr_0.75fr]">
-        <Card className="overflow-hidden border-cyan-200/12 bg-black/22 p-0 shadow-none">
-          <div className="flex items-center justify-between border-b border-cyan-200/10 p-4">
-            <div>
-              <h3 className="text-base font-semibold">Equity curve</h3>
-              <p className="text-sm text-cyan-50/55">High-level portfolio movement</p>
-            </div>
-            <span className={`rounded-md border px-2 py-1 text-sm ${data.totalPnl >= 0 ? "border-profit/30 bg-profit/10 text-profit" : "border-loss/30 bg-loss/10 text-loss"}`}>
-              {formatPercent(data.totalPnlPct)}
-            </span>
-          </div>
-          <PortfolioChart />
-        </Card>
+        <ConsultantDecisionBoard
+          data={data}
+          intelligence={intelligence}
+          topThreeAllocation={topThreeAllocation}
+          cashPct={cashPct}
+        />
 
         <div className="grid gap-4">
           <section className="rounded-md border border-cyan-200/12 bg-white/[0.045] p-4">
@@ -861,6 +851,137 @@ function DecisionReadinessBanner({ qualityScore, warnings }: { qualityScore: num
         ) : null}
       </div>
     </section>
+  );
+}
+
+function ConsultantDecisionBoard({
+  data,
+  intelligence,
+  topThreeAllocation,
+  cashPct
+}: {
+  data: PortfolioSummary;
+  intelligence?: PortfolioIntelligence;
+  topThreeAllocation: number;
+  cashPct: number;
+}) {
+  const qualityScore = intelligence?.dataQuality.score ?? 0;
+  const highRiskCount = intelligence?.alerts.filter((alert) => alert.severity === "high").length ?? 0;
+  const reduceCount = intelligence?.recommendations.filter((item) => isReduceCall(item.recommendation)).length ?? 0;
+  const addCount = intelligence?.recommendations.filter((item) => isAddCall(item.recommendation)).length ?? 0;
+  const grade = getDecisionGrade(qualityScore, data.healthScore, topThreeAllocation, highRiskCount);
+  const facts = [
+    {
+      label: "Actability",
+      value: grade.label,
+      detail: grade.detail,
+      tone: grade.tone,
+      icon: <Target size={18} />
+    },
+    {
+      label: "Evidence",
+      value: `${qualityScore}/100`,
+      detail: qualityScore >= 70 ? "Usable with verification" : "Needs stronger data",
+      tone: qualityScore >= 70 ? "text-profit" : qualityScore >= 55 ? "text-amber" : "text-loss",
+      icon: <Database size={18} />
+    },
+    {
+      label: "Concentration",
+      value: `${topThreeAllocation.toFixed(1)}%`,
+      detail: topThreeAllocation > 55 ? "Top 3 positions are heavy" : "Top 3 weight is manageable",
+      tone: topThreeAllocation > 55 ? "text-loss" : topThreeAllocation > 42 ? "text-amber" : "text-profit",
+      icon: <Layers size={18} />
+    },
+    {
+      label: "Action mix",
+      value: `${addCount}/${reduceCount}`,
+      detail: "Add vs reduce signals",
+      tone: reduceCount > addCount ? "text-amber" : "text-cyan-100",
+      icon: <ListChecks size={18} />
+    }
+  ];
+
+  return (
+    <Card className="relative overflow-hidden border-cyan-200/12 bg-black/22 p-0 shadow-none">
+      <div className="market-scanline" />
+      <div className="border-b border-cyan-200/10 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm text-cyan-100">
+              <Gauge size={18} />
+              30-year consultant filter
+            </div>
+            <h3 className="text-xl font-semibold">Decision cockpit</h3>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-cyan-50/62">
+              This panel removes vanity metrics and focuses on whether the portfolio is actionable, overexposed, under-evidenced or ready for a staged decision.
+            </p>
+          </div>
+          <span className={`rounded-md border border-current/25 bg-black/24 px-3 py-2 text-sm font-medium ${grade.tone}`}>
+            {grade.call}
+          </span>
+        </div>
+      </div>
+
+      <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+        {facts.map((fact, index) => (
+          <motion.div
+            key={fact.label}
+            initial={{ opacity: 0, y: 14, rotateX: -16 }}
+            animate={{ opacity: 1, y: 0, rotateX: 0 }}
+            transition={{ delay: index * 0.05, duration: 0.36, ease: "easeOut" }}
+            className="holo-card rounded-md border border-cyan-200/12 bg-white/[0.045] p-4"
+          >
+            <div className="mb-4 flex items-center justify-between text-muted">
+              <span className="text-sm">{fact.label}</span>
+              {fact.icon}
+            </div>
+            <div className={`text-xl font-semibold ${fact.tone}`}>{fact.value}</div>
+            <div className="mt-1 text-sm leading-5 text-muted">{fact.detail}</div>
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="grid gap-3 border-t border-cyan-200/10 bg-black/18 p-4 lg:grid-cols-3">
+        <DecisionRule
+          title="Before buying"
+          text={qualityScore >= 70 ? "Check valuation, 20/50 EMA trend, latest news and earnings date before adding." : "Do not buy yet; first improve data quality and confirm live prices."}
+          tone="text-profit"
+        />
+        <DecisionRule
+          title="Before holding"
+          text={data.totalPnlPct >= 0 ? "Hold winners only while thesis, trend and allocation remain inside plan." : "Hold losers only if thesis is intact and downside is capped."}
+          tone="text-amber"
+        />
+        <DecisionRule
+          title="Before selling"
+          text={highRiskCount || reduceCount ? "Trim in phases when risk persists; avoid panic exits from one weak session." : "No forced sell signal; review only if thesis or position size breaks."}
+          tone="text-loss"
+        />
+      </div>
+
+      <div className="border-t border-cyan-200/10 bg-cyan-200/[0.035] p-4 text-sm leading-6 text-cyan-50/72">
+        Cash buffer is shown only when broker/import data confirms it. Current confirmed cash ratio: {cashPct.toFixed(1)}%.
+      </div>
+    </Card>
+  );
+}
+
+function DecisionRule({ title, text, tone }: { title: string; text: string; tone: string }) {
+  return (
+    <div className="rounded-md border border-cyan-200/12 bg-black/24 p-3">
+      <div className={`mb-2 text-sm font-semibold ${tone}`}>{title}</div>
+      <p className="text-sm leading-5 text-muted">{text}</p>
+    </div>
+  );
+}
+
+function MarketPulseFx() {
+  return (
+    <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+      <div className="market-grid" />
+      <div className="market-laser market-laser-a" />
+      <div className="market-laser market-laser-b" />
+    </div>
   );
 }
 
@@ -1749,7 +1870,12 @@ function PortfolioReport({
           <ReportKpi label="Advisor View" value={verdict.label} detail={verdict.detail} tone={verdict.tone} icon={<ShieldCheck size={18} />} />
           <ReportKpi label="Action Calls" value={`${actions.length}`} detail={`${addCount} add, ${reduceCount} reduce`} icon={<ClipboardList size={18} />} />
           <ReportKpi label="Conviction" value={averageConfidence ? `${averageConfidence}/100` : "Pending"} detail="Avg. recommendation confidence" icon={<Bot size={18} />} />
-          <ReportKpi label="Capital Ready" value={`${cashPct.toFixed(1)}%`} detail={formatCurrency(data.cashBalance)} icon={<Wallet size={18} />} />
+          <ReportKpi
+            label="Confirmed Cash"
+            value={data.cashBalance > 0 ? `${cashPct.toFixed(1)}%` : "Not synced"}
+            detail={data.cashBalance > 0 ? formatCurrency(data.cashBalance) : "Broker cash data unavailable"}
+            icon={<Wallet size={18} />}
+          />
         </div>
 
         <div className="grid gap-2 border-b border-violet-200/10 bg-black/20 p-3 md:grid-cols-2 xl:grid-cols-5">
@@ -2114,17 +2240,17 @@ function PortfolioReport({
                       <h3 className="text-base font-semibold">Review calendar</h3>
                     </div>
                     <span className="rounded-md border border-amber/20 bg-amber/10 px-2 py-1 text-sm text-amber">
-                      {data.upcomingEvents.length} events
+                      {data.upcomingEvents.length ? `${data.upcomingEvents.length} events` : "Review rhythm"}
                     </span>
                   </div>
                   <div className="grid gap-3 lg:grid-cols-3">
-                    {data.upcomingEvents.map((event, index) => (
+                    {(data.upcomingEvents.length ? data.upcomingEvents : buildReviewRhythm(data, intelligence, analytics)).map((event, index) => (
                       <motion.div
                         key={event}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.04, duration: 0.18 }}
-                        className="min-h-[112px] rounded-md border border-violet-200/12 bg-black/22 p-4 text-sm text-muted"
+                        initial={{ opacity: 0, y: 14, scale: 0.96, rotateX: -12 }}
+                        animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
+                        transition={{ delay: index * 0.05, duration: 0.28, ease: "easeOut" }}
+                        className="holo-card min-h-[112px] rounded-md border border-violet-200/12 bg-black/22 p-4 text-sm text-muted"
                       >
                         <div className="mb-3 flex h-8 w-8 items-center justify-center rounded-md bg-amber/12 text-amber">
                           <CalendarClock size={16} />
@@ -2563,10 +2689,10 @@ function OverviewTile({
 function ReportSectionShell({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10, scale: 0.99 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8, scale: 0.99 }}
-      transition={{ duration: 0.22, ease: "easeOut" }}
+      initial={{ opacity: 0, y: 18, scale: 0.975, rotateX: -6, filter: "blur(7px)" }}
+      animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0, filter: "blur(0px)" }}
+      exit={{ opacity: 0, y: -10, scale: 0.985, rotateX: 4, filter: "blur(6px)" }}
+      transition={{ duration: 0.32, ease: "easeOut" }}
       className="grid gap-4"
     >
       {children}
@@ -2829,6 +2955,39 @@ function getPortfolioVerdict(healthScore: number, concentrationPct: number, high
   };
 }
 
+function getDecisionGrade(qualityScore: number, healthScore: number, concentrationPct: number, highRiskCount: number) {
+  if (qualityScore < 55) {
+    return {
+      label: "Watchlist",
+      call: "Do not act yet",
+      detail: "Evidence is not strong enough for buy/sell action.",
+      tone: "text-loss"
+    };
+  }
+  if (highRiskCount > 0 || concentrationPct > 60) {
+    return {
+      label: "Risk first",
+      call: "Repair before adding",
+      detail: "Position sizing or alert severity needs attention.",
+      tone: "text-amber"
+    };
+  }
+  if (qualityScore >= 75 && healthScore >= 72) {
+    return {
+      label: "Staged action",
+      call: "Actionable shortlist",
+      detail: "Use tranches after valuation and trend confirmation.",
+      tone: "text-profit"
+    };
+  }
+  return {
+    label: "Verify",
+    call: "Review before action",
+    detail: "Good enough for screening, not enough for blind execution.",
+    tone: "text-cyan-100"
+  };
+}
+
 function buildReportActions(data: PortfolioSummary, intelligence?: PortfolioIntelligence): ReportAction[] {
   const actions: ReportAction[] = [];
   const topHolding = [...data.holdings].sort((a, b) => b.allocationPct - a.allocationPct)[0];
@@ -2976,6 +3135,33 @@ function getMarketPosture(healthScore: number, pnlPct: number, cashPct: number) 
     return "Treat this as a repair phase: protect capital, cut broken theses and avoid averaging down without fresh evidence.";
   }
   return "Maintain exposure, rotate away from weak risk/reward pockets and keep cash ready for dislocations.";
+}
+
+function buildReviewRhythm(
+  data: PortfolioSummary,
+  intelligence?: PortfolioIntelligence,
+  analytics?: PortfolioAnalytics
+) {
+  const topHolding = [...data.holdings].sort((a, b) => b.allocationPct - a.allocationPct)[0];
+  const qualityScore = intelligence?.dataQuality.score ?? analytics?.dataQualityScore ?? 0;
+  const sanityIssues = analytics?.sanityChecks.filter((check) => check.status !== "pass") ?? [];
+  const rhythm = [
+    "Morning: verify live prices, data quality and any overnight news before adding fresh capital.",
+    "Weekly: review top position weight, sector weight and stop/review levels for every weak holding.",
+    "Monthly: compare holdings against thesis, valuation comfort, cash-flow quality and portfolio concentration."
+  ];
+
+  if (topHolding && topHolding.allocationPct > 20) {
+    rhythm.unshift(`${topHolding.symbol}: review position size before adding because it is ${topHolding.allocationPct.toFixed(1)}% of portfolio.`);
+  }
+  if (qualityScore < 70) {
+    rhythm.unshift("Data quality: improve broker sync, fundamentals and technical coverage before treating calls as actionable.");
+  }
+  if (sanityIssues.length) {
+    rhythm.unshift(`${sanityIssues[0].label}: ${sanityIssues[0].detail}`);
+  }
+
+  return rhythm.slice(0, 6);
 }
 
 function isReduceCall(recommendation: string) {

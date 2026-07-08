@@ -7,8 +7,8 @@ export const fallbackPortfolio: PortfolioSummary = {
   totalPnl: 14750.4,
   totalPnlPct: 9.92,
   healthScore: 82,
-  cashBalance: 25000,
-  dividendSummary: 3240,
+  cashBalance: 0,
+  dividendSummary: 0,
   aiSummary:
     "Portfolio quality is healthy with positive long-term P&L. Financials and auto exposure are leading gains; monitor IT weakness and sector concentration.",
   holdings: [
@@ -76,7 +76,7 @@ export const fallbackPortfolio: PortfolioSummary = {
     { label: "Financial Services", value: 30569.4, percentage: 18.7 }
   ],
   assetAllocation: [{ label: "equity", value: 163525.6, percentage: 100 }],
-  recentTransactions: ["Bought 5 HDFCBANK", "Dividend credited from INFY", "Added RELIANCE to watchlist"],
-  upcomingEvents: ["Infosys quarterly results", "HDFC Bank dividend date", "RBI policy announcement"],
-  updatedAt: new Date().toISOString()
+  recentTransactions: [],
+  upcomingEvents: [],
+  updatedAt: "2026-07-01T00:00:00.000Z"
 };
