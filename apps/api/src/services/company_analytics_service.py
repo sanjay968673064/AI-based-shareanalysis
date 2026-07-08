@@ -7,7 +7,9 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from src.core.config import settings
+from src.core.security import token_cipher
 from src.domain.auth import UserContext
+from src.repositories.app_settings import AppSettingsRepository
 from src.repositories.portfolio import PortfolioRepository
 from src.schemas.analytics import (
     AnalyticsMetricRead,
@@ -26,8 +28,13 @@ MARKET_TZ = ZoneInfo("Asia/Kolkata")
 
 
 class CompanyAnalyticsService:
-    def __init__(self, portfolio_repo: PortfolioRepository) -> None:
+    def __init__(
+        self,
+        portfolio_repo: PortfolioRepository,
+        settings_repo: AppSettingsRepository | None = None,
+    ) -> None:
         self._portfolio_repo = portfolio_repo
+        self._settings_repo = settings_repo
         self._timeout = max(6.0, settings.market_data_timeout_seconds)
         self._max_concurrency = max(1, settings.market_data_max_concurrency)
         self._market_data = MarketDataProvider()
@@ -73,7 +80,17 @@ class CompanyAnalyticsService:
             warnings=warnings[:8],
         )
         _CACHE[cache_key] = result
+        await self._store_latest(context, result)
         return result
+
+    async def _store_latest(self, context: UserContext, result: PortfolioAnalyticsRead) -> None:
+        if self._settings_repo is None:
+            return
+        await self._settings_repo.upsert(
+            context,
+            "latest_portfolio_analytics_snapshot",
+            token_cipher.encrypt(result.model_dump_json(by_alias=True)),
+        )
 
     async def _analyze_company(
         self,

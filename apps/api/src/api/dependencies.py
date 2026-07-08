@@ -58,7 +58,7 @@ def get_intelligence_service(session: AsyncSession = Depends(get_session)) -> In
 
 
 def get_company_analytics_service(session: AsyncSession = Depends(get_session)) -> CompanyAnalyticsService:
-    return CompanyAnalyticsService(PortfolioRepository(session))
+    return CompanyAnalyticsService(PortfolioRepository(session), AppSettingsRepository(session))
 
 
 def get_openai_settings_service(session: AsyncSession = Depends(get_session)) -> OpenAiSettingsService:

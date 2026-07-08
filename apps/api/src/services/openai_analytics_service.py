@@ -5,6 +5,7 @@ from typing import Any
 import httpx
 
 from src.core.config import settings
+from src.core.security import token_cipher
 from src.domain.auth import UserContext
 from src.repositories.app_settings import AppSettingsRepository
 from src.schemas.ai_config import AiAnalyticsInsightRead, AiProvider
@@ -28,15 +29,17 @@ class OpenAiAnalyticsService:
         api_key = await self._settings.get_api_key(context, provider)
         model = await self._settings.get_model(context, provider)
         if not api_key:
-            return AiAnalyticsInsightRead(
+            result = AiAnalyticsInsightRead(
                 configured=False,
                 provider=provider,
                 model=model,
                 summary=f"{self._provider_label(provider)} is not configured. Add your API key in AI Config to generate AI analytics.",
                 data_warnings=[f"No {self._provider_label(provider)} API key is configured."],
             )
+            await self._store_latest(context, result)
+            return result
         if not analytics.companies:
-            return AiAnalyticsInsightRead(
+            result = AiAnalyticsInsightRead(
                 configured=True,
                 provider=provider,
                 generated_at=datetime.now(UTC),
@@ -44,17 +47,23 @@ class OpenAiAnalyticsService:
                 summary="No portfolio holdings are available, so AI analysis was not generated.",
                 data_warnings=["Sync Zerodha or import holdings before generating AI analytics."],
             )
+            await self._store_latest(context, result)
+            return result
 
         try:
             data = self._prompt_payload(analytics)
             if provider == "gemini":
                 payload, used_model, retry_warnings = await self._call_gemini(api_key, model, data)
-                return self._parse_response(payload, provider, used_model, analytics, retry_warnings)
+                result = self._parse_response(payload, provider, used_model, analytics, retry_warnings)
+                await self._store_latest(context, result)
+                return result
             payload = await self._call_openai(api_key, model, data)
-            return self._parse_response(payload, provider, model, analytics)
+            result = self._parse_response(payload, provider, model, analytics)
+            await self._store_latest(context, result)
+            return result
         except (httpx.HTTPError, ValueError, KeyError, TypeError, json.JSONDecodeError) as exc:
             error_detail = self._safe_error_detail(exc)
-            return AiAnalyticsInsightRead(
+            result = AiAnalyticsInsightRead(
                 configured=True,
                 provider=provider,
                 generated_at=datetime.now(UTC),
@@ -65,6 +74,15 @@ class OpenAiAnalyticsService:
                     "Try a different Gemini model in AI Config if this repeats.",
                 ],
             )
+            await self._store_latest(context, result)
+            return result
+
+    async def _store_latest(self, context: UserContext, result: AiAnalyticsInsightRead) -> None:
+        await self._settings._settings_repo.upsert(
+            context,
+            "latest_ai_analytics_snapshot",
+            token_cipher.encrypt(result.model_dump_json(by_alias=True)),
+        )
 
     async def _call_openai(self, api_key: str, model: str, data: dict[str, Any]) -> dict[str, Any]:
         instructions = self._instructions()

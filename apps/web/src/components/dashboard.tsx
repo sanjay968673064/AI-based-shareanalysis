@@ -80,7 +80,7 @@ import { formatCurrency, formatPercent } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useUiStore } from "@/store/ui-store";
 
-type DashboardView = "overview" | "risk" | "reports" | "analytics" | "discover" | "ai";
+type DashboardView = "overview" | "risk" | "reports" | "analytics" | "discover";
 type NavItem = [DashboardView, typeof BriefcaseBusiness, string];
 type ReportAction = {
   priority: "High" | "Medium" | "Low";
@@ -225,6 +225,8 @@ export function Dashboard() {
   const [aiInsight, setAiInsight] = useState<AiAnalyticsInsight | null>(null);
   const [aiInsightError, setAiInsightError] = useState<string | null>(null);
   const [isGeneratingAiInsight, setIsGeneratingAiInsight] = useState(false);
+  const [isRunningUnifiedAnalytics, setIsRunningUnifiedAnalytics] = useState(false);
+  const [unifiedAnalyticsReady, setUnifiedAnalyticsReady] = useState(false);
   const autoSyncInFlight = useRef(false);
 
   const zerodhaAutoSyncEnabled =
@@ -424,6 +426,24 @@ export function Dashboard() {
     }
   }
 
+  async function handleRunUnifiedAnalytics() {
+    setIsRunningUnifiedAnalytics(true);
+    setAiInsightError(null);
+    setUnifiedAnalyticsReady(false);
+    try {
+      const latestAnalytics = await fetchPortfolioAnalytics(true);
+      queryClient.setQueryData(["portfolio-analytics"], latestAnalytics);
+      await refetchAnalytics();
+      const latestInsight = await runOpenAiAnalyticsInsight();
+      setAiInsight(latestInsight);
+      setUnifiedAnalyticsReady(Boolean(latestInsight.configured && latestAnalytics.companies.length));
+    } catch (error) {
+      setAiInsightError(error instanceof Error ? error.message : "Unable to complete unified analytics run.");
+    } finally {
+      setIsRunningUnifiedAnalytics(false);
+    }
+  }
+
   if (!data) {
     return <main className="min-h-screen bg-background" />;
   }
@@ -495,8 +515,7 @@ export function Dashboard() {
               ["risk", ShieldCheck, "Risk"],
               ["reports", CalendarClock, "Reports"],
               ["analytics", Building2, "Analytics"],
-              ["discover", Search, "Discover"],
-              ["ai", Bot, "AI Analysis"]
+              ["discover", Search, "Discover"]
             ] satisfies NavItem[]).map(([id, Icon, label]) => (
               <button
                 key={id}
@@ -541,26 +560,16 @@ export function Dashboard() {
               transition={{ duration: 0.34, ease: "easeOut" }}
               className="grid gap-5"
             >
-              {view === "ai" ? (
-                <PortfolioAiAnalysisView
+              {view === "analytics" ? (
+                <UnifiedAnalyticsWorkspace
                   analytics={analytics}
                   settings={openAiSettings}
                   insight={aiInsight}
                   error={aiInsightError}
-                  isGenerating={isGeneratingAiInsight}
-                  onGenerate={handleGenerateAiInsight}
+                  isRunning={isRunningUnifiedAnalytics}
+                  isReady={unifiedAnalyticsReady}
+                  onRun={handleRunUnifiedAnalytics}
                   onConfigure={() => setIsOpenAiPanelOpen(true)}
-                />
-              ) : view === "analytics" ? (
-                <PortfolioAnalyticsView
-                  analytics={analytics}
-                  isLoading={isFetchingAnalytics}
-                  onRefresh={async () => {
-                    await runDailyAnalyticsRefresh();
-                    const latest = await fetchPortfolioAnalytics(true);
-                    queryClient.setQueryData(["portfolio-analytics"], latest);
-                    await refetchAnalytics();
-                  }}
                 />
               ) : view === "discover" ? (
                 <StockDiscoveryView
