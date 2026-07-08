@@ -356,6 +356,212 @@ textarea {
     0 0 32px rgba(34, 211, 238, 0.16);
 }
 
+.ai-lab-shell {
+  position: relative;
+  isolation: isolate;
+  perspective: 1200px;
+}
+
+.ai-lab-shell::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(34, 211, 238, 0.22), transparent 30%),
+    radial-gradient(circle at 84% 10%, rgba(139, 92, 246, 0.18), transparent 34%),
+    radial-gradient(circle at 50% 110%, rgba(16, 185, 129, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 42%, rgba(34, 211, 238, 0.08));
+}
+
+.ai-lab-noise {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.16;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 100% 8px, 36px 36px;
+  mix-blend-mode: screen;
+}
+
+.ai-lab-hero {
+  background:
+    radial-gradient(circle at 42% 45%, rgba(34, 211, 238, 0.16), transparent 26%),
+    linear-gradient(135deg, rgba(8, 13, 25, 0.86), rgba(3, 7, 18, 0.94));
+}
+
+.ai-lab-grid {
+  position: absolute;
+  inset: -20%;
+  opacity: 0.34;
+  background-image:
+    linear-gradient(rgba(125, 211, 252, 0.11) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(125, 211, 252, 0.08) 1px, transparent 1px);
+  background-size: 38px 38px;
+  transform: perspective(760px) rotateX(62deg) translateY(-16%);
+  animation: ai-lab-grid-drift 12s linear infinite;
+}
+
+.ai-lab-comet {
+  position: absolute;
+  left: -25%;
+  width: 150%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.72), rgba(167, 139, 250, 0.52), transparent);
+  box-shadow: 0 0 26px rgba(34, 211, 238, 0.32);
+}
+
+.ai-lab-comet-a {
+  top: 24%;
+  animation: ai-lab-comet 5.8s ease-in-out infinite;
+}
+
+.ai-lab-comet-b {
+  top: 70%;
+  animation: ai-lab-comet 7.4s ease-in-out infinite reverse;
+}
+
+.ai-orbital-core {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(330px, 76vw);
+  aspect-ratio: 1;
+  border-radius: 999px;
+}
+
+.ai-orbital-core::before,
+.ai-orbital-core::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.ai-orbital-core::before {
+  inset: 8px;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.15), transparent 15%),
+    conic-gradient(from 90deg, transparent, rgba(34, 211, 238, 0.24), transparent, rgba(139, 92, 246, 0.24), transparent);
+  filter: blur(0.4px);
+  animation: ai-orbital-spin 10s linear infinite;
+}
+
+.ai-orbital-core::after {
+  inset: 48px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.22), transparent 70%);
+  box-shadow: inset 0 0 48px rgba(255, 255, 255, 0.06);
+  animation: ai-orbital-breathe 2.8s ease-in-out infinite;
+}
+
+.ai-orbital-track {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1px dashed rgba(125, 211, 252, 0.36);
+}
+
+.ai-orbital-track-a {
+  animation: ai-orbital-spin 18s linear infinite;
+}
+
+.ai-orbital-track-b {
+  inset: 28px;
+  transform: rotate(22deg);
+  border-color: rgba(167, 139, 250, 0.32);
+  animation: ai-orbital-spin 11s linear infinite reverse;
+}
+
+.ai-orbital-spark {
+  position: absolute;
+  z-index: 3;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: #67e8f9;
+  box-shadow: 0 0 24px rgba(103, 232, 249, 0.9);
+  animation: ai-orbital-spark 2.3s ease-in-out infinite;
+}
+
+.ai-orbital-spark-a {
+  top: 13%;
+  left: 31%;
+}
+
+.ai-orbital-spark-b {
+  right: 12%;
+  top: 48%;
+  animation-delay: 0.32s;
+}
+
+.ai-orbital-spark-c {
+  bottom: 13%;
+  left: 45%;
+  animation-delay: 0.66s;
+}
+
+.ai-orbital-center {
+  position: relative;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 116px;
+  height: 116px;
+  border-radius: 999px;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    radial-gradient(circle at 50% 35%, rgba(255, 255, 255, 0.16), transparent 45%),
+    rgba(0, 0, 0, 0.34);
+  box-shadow:
+    inset 0 0 34px rgba(255, 255, 255, 0.06),
+    0 0 52px rgba(34, 211, 238, 0.22);
+}
+
+.ai-orbital-verified .ai-orbital-track,
+.ai-lab-verified .ai-lab-comet {
+  border-color: rgba(110, 231, 183, 0.44);
+}
+
+.ai-orbital-verified .ai-orbital-spark {
+  background: #6ee7b7;
+  box-shadow: 0 0 28px rgba(110, 231, 183, 0.92);
+}
+
+.ai-orbital-error .ai-orbital-spark {
+  background: #fb7185;
+  box-shadow: 0 0 28px rgba(251, 113, 133, 0.86);
+}
+
+.ai-orbital-validating .ai-orbital-center {
+  animation: ai-orbital-center-pulse 1.1s ease-in-out infinite;
+}
+
+.ai-lab-field {
+  position: relative;
+}
+
+.ai-lab-field::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -6px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(34, 211, 238, 0.34), transparent);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.ai-lab-field:focus-within::before {
+  opacity: 1;
+}
+
 @keyframes market-grid-drift {
   from {
     background-position: 0 0, 0 0;
@@ -427,6 +633,71 @@ textarea {
   }
 }
 
+@keyframes ai-lab-grid-drift {
+  from {
+    background-position: 0 0, 0 0;
+  }
+  to {
+    background-position: 0 76px, 76px 0;
+  }
+}
+
+@keyframes ai-lab-comet {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg);
+    opacity: 0.06;
+  }
+  45% {
+    transform: translateY(110px) rotate(-6deg);
+    opacity: 0.62;
+  }
+}
+
+@keyframes ai-orbital-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes ai-orbital-breathe {
+  0%,
+  100% {
+    transform: scale(0.96);
+    opacity: 0.68;
+  }
+  50% {
+    transform: scale(1.02);
+    opacity: 1;
+  }
+}
+
+@keyframes ai-orbital-spark {
+  0%,
+  100% {
+    transform: scale(0.75);
+    opacity: 0.54;
+  }
+  50% {
+    transform: scale(1.42);
+    opacity: 1;
+  }
+}
+
+@keyframes ai-orbital-center-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 34px rgba(255, 255, 255, 0.06),
+      0 0 42px rgba(139, 92, 246, 0.18);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 42px rgba(255, 255, 255, 0.08),
+      0 0 72px rgba(139, 92, 246, 0.36);
+  }
+}
+
 @keyframes market-laser-sweep {
   0%,
   100% {
@@ -460,7 +731,14 @@ textarea {
   .ai-scan-mesh,
   .ai-neural-ring::before,
   .ai-neural-ring::after,
-  .ai-neural-node {
+  .ai-neural-node,
+  .ai-lab-grid,
+  .ai-lab-comet,
+  .ai-orbital-core::before,
+  .ai-orbital-core::after,
+  .ai-orbital-track,
+  .ai-orbital-spark,
+  .ai-orbital-center {
     animation: none;
   }
 

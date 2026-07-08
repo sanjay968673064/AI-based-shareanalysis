@@ -5,37 +5,46 @@ import { AnimatePresence, motion } from "framer-motion";
 import {
   Activity,
   AlertTriangle,
+  Atom,
+  BadgeCheck,
   BarChart3,
   Bot,
+  BrainCircuit,
   BriefcaseBusiness,
   Building2,
   CalendarClock,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
-  Cpu,
+  CircuitBoard,
   Database,
+  DatabaseZap,
   FileText,
+  Fingerprint,
   Gauge,
   KeyRound,
   Layers,
   LineChart,
   LinkIcon,
   ListChecks,
+  LockKeyhole,
   LogOut,
   Newspaper,
+  Orbit,
   PieChart,
   RefreshCw,
   RadioTower,
+  Rocket,
+  ScanLine,
   Search,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Target,
   TrendingUp,
   UserCircle,
   Wallet,
-  X
+  X,
+  Zap
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type {
@@ -443,7 +452,15 @@ export function Dashboard() {
               <Bot size={18} className={isAnalyzing || isRunningAnalysis ? "animate-pulse" : ""} />
               {isRunningAnalysis ? "Analyzing" : "Analyze"}
             </Button>
-            <Button variant="ghost" onClick={() => setIsOpenAiPanelOpen(true)}>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setOpenAiMessage(null);
+                setOpenAiError(null);
+                setOpenAiKeyInput("");
+                setIsOpenAiPanelOpen(true);
+              }}
+            >
               <KeyRound size={18} />
               AI Config
             </Button>
@@ -644,13 +661,24 @@ export function Dashboard() {
           model={openAiModelInput}
           message={openAiMessage}
           error={openAiError}
+          isValidated={Boolean(openAiMessage?.toLowerCase().includes("connection verified")) && !openAiError}
           isSaving={isSavingOpenAi}
-          onApiKeyChange={setOpenAiKeyInput}
+          onApiKeyChange={(value) => {
+            setOpenAiKeyInput(value);
+            setOpenAiMessage(null);
+            setOpenAiError(null);
+          }}
           onProviderChange={(provider) => {
             setAiProviderInput(provider);
             setOpenAiModelInput(provider === "gemini" ? RECOMMENDED_GEMINI_MODEL : "gpt-4.1-mini");
+            setOpenAiMessage(null);
+            setOpenAiError(null);
           }}
-          onModelChange={setOpenAiModelInput}
+          onModelChange={(value) => {
+            setOpenAiModelInput(value);
+            setOpenAiMessage(null);
+            setOpenAiError(null);
+          }}
           onSave={handleSaveOpenAiSettings}
           onDelete={handleDeleteOpenAiSettings}
           onClose={() => setIsOpenAiPanelOpen(false)}
@@ -1017,6 +1045,7 @@ function OpenAiConfigPanel({
   model,
   message,
   error,
+  isValidated,
   isSaving,
   onApiKeyChange,
   onProviderChange,
@@ -1031,6 +1060,7 @@ function OpenAiConfigPanel({
   model: string;
   message: string | null;
   error: string | null;
+  isValidated: boolean;
   isSaving: boolean;
   onApiKeyChange: (value: string) => void;
   onProviderChange: (value: AiProvider) => void;
@@ -1049,145 +1079,192 @@ function OpenAiConfigPanel({
           detail: "This model was already saved. Select the recommended model if this one fails."
         }
       ];
-  const isConnected = Boolean(settings?.configured);
+  const hasSavedKey = Boolean(settings?.configured);
   const connectedProvider = settings?.provider ?? provider;
   const connectedLabel = providerLabel(connectedProvider);
   const selectedModelDetail =
     geminiModelOptions.find((option) => option.value === model)?.detail ??
     "Use the recommended model unless Google AI Studio says a specific model is unavailable for your key.";
+  const phase = isSaving ? "validating" : isValidated ? "verified" : error ? "error" : "ready";
+  const phaseCopy = {
+    ready: {
+      label: "Ready for validation",
+      title: hasSavedKey ? "Saved key found. Validate before showing success." : "Drop in a key. I will prove it works.",
+      detail: hasSavedKey
+        ? `A ${connectedLabel} key is saved on the server, but this screen will only show success after a fresh live validation.`
+        : `Paste your ${providerLabel(provider)} key and run a live provider test before analytics unlocks.`,
+      tone: "cyan"
+    },
+    validating: {
+      label: "Neural handshake running",
+      title: "Testing the provider now",
+      detail: "The backend is sending a live validation request. No success state appears until this returns clean.",
+      tone: "violet"
+    },
+    verified: {
+      label: "Live key verified",
+      title: `${providerLabel(provider)} accepted the test request`,
+      detail: message ?? "Connection verified. This key is ready for AI-powered portfolio analytics.",
+      tone: "emerald"
+    },
+    error: {
+      label: "Validation failed",
+      title: "The provider rejected this setup",
+      detail: error ?? "Check the key, model, provider quota, and network access before trying again.",
+      tone: "rose"
+    }
+  }[phase];
+  const canValidate = apiKey.trim().length >= 20 && !isSaving;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#030507]/86 px-3 py-4 backdrop-blur-xl sm:items-center sm:px-6">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#010308]/90 px-3 py-4 backdrop-blur-2xl sm:items-center sm:px-6">
       <motion.div
-        initial={{ opacity: 0, y: 24, scale: 0.97 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 16, scale: 0.98 }}
-        transition={{ duration: 0.32, ease: "easeOut" }}
-        className="ai-config-shell my-auto w-full max-w-5xl overflow-hidden rounded-lg border border-white/[0.12] bg-[#090d13] shadow-[0_30px_110px_rgba(0,0,0,0.65)]"
+        initial={{ opacity: 0, y: 34, scale: 0.94, rotateX: -8 }}
+        animate={{ opacity: 1, y: 0, scale: 1, rotateX: 0 }}
+        exit={{ opacity: 0, y: 20, scale: 0.96 }}
+        transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+        className={`ai-lab-shell ai-lab-${phase} my-auto w-full max-w-6xl overflow-hidden rounded-lg border border-white/[0.12] bg-[#05070d] shadow-[0_36px_130px_rgba(0,0,0,0.72)]`}
       >
-        <div className="ai-config-topbar flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-6">
-          <div className="min-w-0">
-            <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-cyan-300/24 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.26em] text-cyan-100">
-                AI Command Deck
-              </span>
-              <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
-                isConnected ? "border-emerald-300/32 bg-emerald-300/12 text-emerald-100" : "border-amber/32 bg-amber/10 text-amber"
-              }`}>
-                {isConnected ? "Live Link" : "Awaiting Key"}
-              </span>
-            </div>
-            <h2 className="text-2xl font-semibold leading-tight text-white sm:text-3xl">AI configuration</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
-              Wire Gemini or OpenAI into the analytics engine. Keys stay local on your server, then every portfolio run uses the selected model.
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="shrink-0 rounded-md border border-white/[0.12] bg-white/[0.07] p-2 text-slate-300 transition hover:border-cyan-200/50 hover:bg-cyan-200/[0.12] hover:text-white"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="grid gap-0 lg:grid-cols-[0.92fr_1.08fr]">
-          <section className={`ai-command-core relative overflow-hidden border-b border-white/10 p-5 sm:p-6 lg:border-b-0 lg:border-r ${
-            isConnected ? "is-live border-emerald-300/[0.18]" : "is-waiting border-amber/[0.18]"
-          }`}>
-            <div className="ai-scan-mesh" />
-            <div className="relative z-10 flex min-h-full flex-col gap-5">
+        <div className="ai-lab-noise" />
+        <div className="relative z-10 grid lg:grid-cols-[1.03fr_0.97fr]">
+          <section className="ai-lab-hero relative min-h-[520px] overflow-hidden border-b border-white/10 p-5 sm:p-7 lg:border-b-0 lg:border-r lg:border-white/10">
+            <div className="ai-lab-grid" />
+            <div className="ai-lab-comet ai-lab-comet-a" />
+            <div className="ai-lab-comet ai-lab-comet-b" />
+            <div className="relative z-10 flex min-h-full flex-col">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className={`text-xs font-semibold uppercase tracking-[0.24em] ${isConnected ? "text-emerald-100/70" : "text-amber/80"}`}>
-                    {isConnected ? "Provider handshake complete" : "Provider handshake required"}
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-cyan-200/24 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.26em] text-cyan-50">
+                      AI Key Lab
+                    </span>
+                    <span className="rounded-full border border-white/12 bg-white/[0.055] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-300">
+                      {phaseCopy.label}
+                    </span>
                   </div>
-                  <h3 className={`mt-2 text-2xl font-semibold leading-tight ${isConnected ? "text-emerald-50" : "text-amber"}`}>
-                    {isConnected ? `${connectedLabel} is online` : `${providerLabel(provider)} is offline`}
-                  </h3>
-                  <p className="mt-3 max-w-md text-sm leading-6 text-slate-200/74">
-                    {isConnected
-                      ? "The provider accepted a live test request. Portfolio AI analysis is unlocked for this account."
-                      : `Paste your ${providerLabel(provider)} API key and validate it to unlock AI analysis.`}
+                  <h2 className="max-w-xl text-3xl font-semibold leading-tight text-white sm:text-4xl">
+                    Validate first. Celebrate after.
+                  </h2>
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300">
+                    This panel no longer trusts old saved state as success. It runs a live provider handshake, then flips into verified mode only after the backend accepts the key.
                   </p>
                 </div>
-                <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${isConnected ? "border-emerald-200/30 bg-emerald-300/12 text-emerald-100" : "border-amber/30 bg-amber/10 text-amber"}`}>
-                  {isConnected ? "Synced" : "Locked"}
-                </div>
+                <button
+                  type="button"
+                  aria-label="Close"
+                  onClick={onClose}
+                  className="shrink-0 rounded-md border border-white/[0.12] bg-white/[0.06] p-2 text-slate-300 transition hover:border-cyan-200/50 hover:bg-cyan-200/[0.12] hover:text-white"
+                >
+                  <X size={18} />
+                </button>
               </div>
 
-              <div className="flex flex-1 items-center justify-center py-2">
-                <div className={`ai-neural-ring ${isConnected ? "is-live" : "is-waiting"}`}>
-                  <div className="ai-neural-node ai-neural-node-a" />
-                  <div className="ai-neural-node ai-neural-node-b" />
-                  <div className="ai-neural-node ai-neural-node-c" />
-                  <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-full border border-white/[0.14] bg-black/[0.36] text-white shadow-[inset_0_0_30px_rgba(255,255,255,0.06)]">
-                    {isConnected ? <CheckCircle2 size={42} /> : <KeyRound size={42} />}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
-                <AiConnectionStat label="Provider" value={isConnected ? connectedLabel : providerLabel(provider)} tone={isConnected ? "live" : "waiting"} />
-                <AiConnectionStat label="Model" value={isConnected ? settings?.model ?? model : model || "Select model"} tone={isConnected ? "live" : "waiting"} />
-                <AiConnectionStat label="Key" value={isConnected ? settings?.maskedKey ?? "Verified" : "Not saved"} tone={isConnected ? "live" : "waiting"} />
-              </div>
-
-              <div className="rounded-lg border border-white/10 bg-black/[0.24] p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-300/80">Validation route</span>
-                  <span className={`rounded-full px-2.5 py-1 text-xs ${isConnected ? "bg-emerald-300/14 text-emerald-100" : "bg-amber/12 text-amber"}`}>
-                    {isConnected ? "Provider accepted test request" : "Waiting for live test"}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-black/[0.46]">
+              <div className="flex flex-1 items-center justify-center py-8">
+                <AnimatePresence mode="wait">
                   <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: isConnected ? "100%" : "38%" }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
-                    className={`h-2 rounded-full ${isConnected ? "bg-gradient-to-r from-emerald-300 via-cyan-200 to-emerald-300" : "bg-gradient-to-r from-amber via-orange-300 to-amber"}`}
-                  />
-                </div>
+                    key={phase}
+                    initial={{ opacity: 0, scale: 0.82, rotate: -8 }}
+                    animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                    exit={{ opacity: 0, scale: 0.88, rotate: 8 }}
+                    transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
+                    className={`ai-orbital-core ai-orbital-${phase}`}
+                  >
+                    <div className="ai-orbital-track ai-orbital-track-a" />
+                    <div className="ai-orbital-track ai-orbital-track-b" />
+                    <div className="ai-orbital-spark ai-orbital-spark-a" />
+                    <div className="ai-orbital-spark ai-orbital-spark-b" />
+                    <div className="ai-orbital-spark ai-orbital-spark-c" />
+                    <div className="ai-orbital-center">
+                      {phase === "verified" ? (
+                        <BadgeCheck size={54} />
+                      ) : phase === "validating" ? (
+                        <ScanLine size={54} />
+                      ) : phase === "error" ? (
+                        <AlertTriangle size={54} />
+                      ) : (
+                        <BrainCircuit size={54} />
+                      )}
+                    </div>
+                  </motion.div>
+                </AnimatePresence>
               </div>
 
-              {message ? <div className="rounded-md border border-profit/20 bg-profit/10 p-3 text-sm leading-5 text-profit">{message}</div> : null}
-              {error ? <div className="rounded-md border border-loss/20 bg-loss/10 p-3 text-sm leading-5 text-loss">{error}</div> : null}
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={`${phase}-copy`}
+                  initial={{ opacity: 0, y: 18 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -12 }}
+                  transition={{ duration: 0.28 }}
+                  className="rounded-lg border border-white/10 bg-black/[0.28] p-4"
+                >
+                  <div className={`text-xs font-semibold uppercase tracking-[0.22em] ${
+                    phaseCopy.tone === "emerald"
+                      ? "text-emerald-100/76"
+                      : phaseCopy.tone === "rose"
+                        ? "text-rose-100/76"
+                        : phaseCopy.tone === "violet"
+                          ? "text-violet-100/76"
+                          : "text-cyan-100/76"
+                  }`}>
+                    {phaseCopy.label}
+                  </div>
+                  <div className="mt-2 text-xl font-semibold text-white">{phaseCopy.title}</div>
+                  <p className="mt-2 text-sm leading-6 text-slate-300">{phaseCopy.detail}</p>
+                </motion.div>
+              </AnimatePresence>
             </div>
           </section>
 
-          <section className="relative overflow-hidden p-5 sm:p-6">
-            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_0%,rgba(56,189,248,0.14),transparent_34%),radial-gradient(circle_at_8%_94%,rgba(16,185,129,0.1),transparent_34%)]" />
+          <section className="relative overflow-hidden p-5 sm:p-7">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_4%,rgba(99,102,241,0.17),transparent_32%),radial-gradient(circle_at_8%_94%,rgba(34,211,238,0.12),transparent_34%)]" />
             <div className="relative z-10 space-y-5">
-              <div>
-                <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-300">
-                  <SlidersHorizontal size={15} />
-                  Provider matrix
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
+                    <CircuitBoard size={15} />
+                    Connection console
+                  </div>
+                  <h3 className="mt-2 text-2xl font-semibold text-white">Configure the AI route</h3>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <AiProviderChoice
-                    value="gemini"
-                    label="Gemini"
-                    detail="Fast free-tier analytics"
-                    active={provider === "gemini"}
-                    icon={Sparkles}
-                    onClick={() => onProviderChange("gemini")}
-                  />
-                  <AiProviderChoice
-                    value="openai"
-                    label="OpenAI"
-                    detail="Custom model routing"
-                    active={provider === "openai"}
-                    icon={Bot}
-                    onClick={() => onProviderChange("openai")}
-                  />
+                <div className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${
+                  phase === "verified"
+                    ? "border-emerald-300/30 bg-emerald-300/12 text-emerald-100"
+                    : phase === "validating"
+                      ? "border-violet-300/30 bg-violet-300/12 text-violet-100"
+                      : phase === "error"
+                        ? "border-rose-300/30 bg-rose-300/12 text-rose-100"
+                        : "border-cyan-300/24 bg-cyan-300/10 text-cyan-100"
+                }`}>
+                  {phase}
                 </div>
               </div>
 
-              <label className="block">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <AiProviderChoice
+                  value="gemini"
+                  label="Gemini"
+                  detail="Fast free-tier analytics"
+                  active={provider === "gemini"}
+                  icon={Sparkles}
+                  onClick={() => onProviderChange("gemini")}
+                />
+                <AiProviderChoice
+                  value="openai"
+                  label="OpenAI"
+                  detail="Custom model routing"
+                  active={provider === "openai"}
+                  icon={Bot}
+                  onClick={() => onProviderChange("openai")}
+                />
+              </div>
+
+              <label className="ai-lab-field block">
                 <span className="mb-2 flex items-center justify-between gap-3 text-sm text-slate-300">
-                  <span>{providerLabel(provider)} API key</span>
-                  <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs text-slate-400">Local encrypted vault</span>
+                  <span className="flex items-center gap-2"><Fingerprint size={16} /> {providerLabel(provider)} API key</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs text-slate-400">
+                    {hasSavedKey ? `Saved: ${settings?.maskedKey ?? "server key"}` : "No saved key"}
+                  </span>
                 </span>
                 <div className="relative">
                   <KeyRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cyan-100/[0.54]" size={18} />
@@ -1196,18 +1273,18 @@ function OpenAiConfigPanel({
                     value={apiKey}
                     onChange={(event) => onApiKeyChange(event.target.value)}
                     placeholder={provider === "gemini" ? "AIza..." : "sk-..."}
-                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.34] py-3 pl-10 pr-3 text-sm text-foreground outline-none transition placeholder:text-slate-600 focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
+                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.38] py-3 pl-10 pr-3 text-sm text-foreground outline-none transition placeholder:text-slate-600 focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
                   />
                 </div>
               </label>
 
               {provider === "gemini" ? (
-                <label className="block">
-                  <span className="mb-2 block text-sm text-slate-300">Gemini model</span>
+                <label className="ai-lab-field block">
+                  <span className="mb-2 flex items-center gap-2 text-sm text-slate-300"><Atom size={16} /> Gemini model</span>
                   <select
                     value={model}
                     onChange={(event) => onModelChange(event.target.value)}
-                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.34] px-3 py-3 text-sm text-foreground outline-none transition focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
+                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.38] px-3 py-3 text-sm text-foreground outline-none transition focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
                   >
                     {geminiModelOptions.map((option) => (
                       <option key={option.value} value={option.value}>
@@ -1220,34 +1297,59 @@ function OpenAiConfigPanel({
                   </div>
                 </label>
               ) : (
-                <label className="block">
-                  <span className="mb-2 block text-sm text-slate-300">OpenAI model</span>
+                <label className="ai-lab-field block">
+                  <span className="mb-2 flex items-center gap-2 text-sm text-slate-300"><Atom size={16} /> OpenAI model</span>
                   <input
                     type="text"
                     value={model}
                     onChange={(event) => onModelChange(event.target.value)}
-                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.34] px-3 py-3 text-sm text-foreground outline-none transition focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
+                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.38] px-3 py-3 text-sm text-foreground outline-none transition focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
                   />
                 </label>
               )}
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
-                  <RadioTower className="mb-2 text-cyan-100/70" size={18} />
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Live test</div>
-                  <div className="mt-1 text-sm text-white">Required</div>
+                <AiConnectionStat icon={RadioTower} label="Live test" value={phase === "verified" ? "Passed" : phase === "validating" ? "Running" : "Required"} tone={phase === "verified" ? "live" : "waiting"} />
+                <AiConnectionStat icon={LockKeyhole} label="Vault" value={hasSavedKey ? "Saved" : "Empty"} tone={hasSavedKey ? "saved" : "waiting"} />
+                <AiConnectionStat icon={Rocket} label="AI engine" value={phase === "verified" ? "Unlocked" : "Locked"} tone={phase === "verified" ? "live" : "waiting"} />
+              </div>
+
+              <div className="rounded-lg border border-white/10 bg-black/[0.26] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-300/80">
+                    <Orbit size={15} />
+                    Validation route
+                  </span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs ${
+                    phase === "verified"
+                      ? "bg-emerald-300/14 text-emerald-100"
+                      : phase === "validating"
+                        ? "bg-violet-300/14 text-violet-100"
+                        : phase === "error"
+                          ? "bg-rose-300/14 text-rose-100"
+                          : "bg-cyan-300/10 text-cyan-100"
+                  }`}>
+                    {phase === "verified" ? "Provider accepted test" : phase === "validating" ? "Testing key" : phase === "error" ? "Fix and retry" : "Awaiting validation"}
+                  </span>
                 </div>
-                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
-                  <ShieldCheck className="mb-2 text-emerald-100/70" size={18} />
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Storage</div>
-                  <div className="mt-1 text-sm text-white">Server-side</div>
-                </div>
-                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
-                  <Cpu className="mb-2 text-amber/80" size={18} />
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Mode</div>
-                  <div className="mt-1 text-sm text-white">Analytics</div>
+                <div className="h-2 overflow-hidden rounded-full bg-black/[0.5]">
+                  <motion.div
+                    key={phase}
+                    initial={{ width: 0 }}
+                    animate={{ width: phase === "verified" ? "100%" : phase === "validating" ? "68%" : phase === "error" ? "24%" : "12%" }}
+                    transition={{ duration: 0.7, ease: "easeOut" }}
+                    className={`h-2 rounded-full ${
+                      phase === "verified"
+                        ? "bg-gradient-to-r from-emerald-300 via-cyan-200 to-emerald-300"
+                        : phase === "error"
+                          ? "bg-gradient-to-r from-rose-400 via-orange-300 to-rose-400"
+                          : "bg-gradient-to-r from-cyan-300 via-violet-300 to-cyan-300"
+                    }`}
+                  />
                 </div>
               </div>
+
+              {message && !isValidated ? <div className="rounded-md border border-cyan-200/20 bg-cyan-300/10 p-3 text-sm leading-5 text-cyan-50">{message}</div> : null}
 
               <div className="flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
                 {settings?.configured ? (
@@ -1255,16 +1357,16 @@ function OpenAiConfigPanel({
                     Remove Key
                   </Button>
                 ) : (
-                  <span className="text-xs leading-5 text-slate-500">Validation sends a tiny provider test request before saving.</span>
+                  <span className="text-xs leading-5 text-slate-500">A live provider request runs before the key is saved.</span>
                 )}
                 <Button
                   type="button"
                   onClick={onSave}
-                  disabled={isSaving || apiKey.trim().length < 20}
-                  className="h-11 bg-cyan-300 px-4 text-black shadow-[0_0_30px_rgba(34,211,238,0.24)] hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={!canValidate}
+                  className="h-11 bg-cyan-300 px-4 text-black shadow-[0_0_34px_rgba(34,211,238,0.28)] hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <KeyRound size={18} />
-                  {isSaving ? "Validating connection" : `Validate & Save ${providerLabel(provider)} Key`}
+                  {isSaving ? <ScanLine size={18} className="animate-pulse" /> : <Zap size={18} />}
+                  {isSaving ? "Validating live key" : `Validate & Save ${providerLabel(provider)} Key`}
                 </Button>
               </div>
             </div>
@@ -1313,10 +1415,27 @@ function AiProviderChoice({
   );
 }
 
-function AiConnectionStat({ label, value, tone }: { label: string; value: string; tone: "live" | "waiting" }) {
+function AiConnectionStat({
+  icon: Icon,
+  label,
+  value,
+  tone
+}: {
+  icon: typeof Bot;
+  label: string;
+  value: string;
+  tone: "live" | "waiting" | "saved";
+}) {
   return (
-    <div className={`rounded-lg border p-3 ${tone === "live" ? "border-emerald-200/[0.16] bg-emerald-300/[0.055]" : "border-amber/[0.16] bg-amber/[0.04]"}`}>
-      <div className={`text-xs uppercase tracking-[0.18em] ${tone === "live" ? "text-emerald-100/56" : "text-amber/62"}`}>{label}</div>
+    <div className={`rounded-lg border p-3 ${
+      tone === "live"
+        ? "border-emerald-200/[0.18] bg-emerald-300/[0.06]"
+        : tone === "saved"
+          ? "border-cyan-200/[0.18] bg-cyan-300/[0.055]"
+          : "border-amber/[0.16] bg-amber/[0.04]"
+    }`}>
+      <Icon className={tone === "live" ? "text-emerald-100/74" : tone === "saved" ? "text-cyan-100/74" : "text-amber/70"} size={18} />
+      <div className={`mt-3 text-xs uppercase tracking-[0.18em] ${tone === "live" ? "text-emerald-100/56" : tone === "saved" ? "text-cyan-100/56" : "text-amber/62"}`}>{label}</div>
       <div className="mt-2 truncate text-sm font-semibold text-foreground">{value}</div>
     </div>
   );
@@ -1550,6 +1669,8 @@ function PortfolioAnalyticsView({
         <AnalyticsHeroTile icon={<ShieldCheck size={18} />} label="Sanity" value={sanityIssueCount ? `${sanityIssueCount} watch` : "Passed"} detail="Coverage and score checks" tone="amber" />
       </div>
 
+      <DataProvenancePanel analytics={analytics} />
+
       <div className="p-4">
         {analytics ? (
           <section className="mb-4 rounded-md border border-emerald-200/14 bg-[linear-gradient(135deg,rgba(16,185,129,0.12),rgba(14,165,233,0.08),rgba(7,19,17,0.40))] p-4">
@@ -1774,6 +1895,174 @@ function PortfolioAnalyticsView({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function DataProvenancePanel({ analytics }: { analytics?: PortfolioAnalytics }) {
+  const profile = buildDataProvenanceProfile(analytics);
+  const gateTone =
+    profile.analyticsReadiness >= 75 && profile.blockers === 0
+      ? "text-profit"
+      : profile.analyticsReadiness >= 55
+        ? "text-amber"
+        : "text-loss";
+
+  return (
+    <section className="border-b border-teal-200/10 bg-black/18 p-4">
+      <div className="data-pipeline-shell overflow-hidden rounded-lg border border-cyan-200/14 bg-[#061117] p-4">
+        <div className="data-pipeline-scan" />
+        <div className="relative z-10">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <div className="mb-2 flex items-center gap-2 text-sm text-cyan-100">
+                <DatabaseZap size={18} />
+                Data provenance and validation
+              </div>
+              <h3 className="text-xl font-semibold tracking-normal">What data enters analytics, and how clean is it?</h3>
+              <p className="mt-2 text-sm leading-6 text-cyan-50/70">
+                Holdings, market feeds, fundamentals and news are fetched, sanitized, cross-checked, scored by sanity checks, then passed into analytics only with warnings and coverage penalties attached.
+              </p>
+            </div>
+            <div className="rounded-lg border border-white/10 bg-black/28 p-3 text-right">
+              <div className="text-xs uppercase tracking-[0.18em] text-muted">Analytics gate</div>
+              <div className={`mt-1 text-2xl font-semibold ${gateTone}`}>{profile.analyticsReadiness}%</div>
+              <div className="mt-1 text-xs text-muted">
+                {profile.blockers ? `${profile.blockers} blocker(s)` : "Ready with warnings"}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-3 xl:grid-cols-[0.95fr_1.05fr]">
+            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <RadioTower className="text-cyan-100" size={18} />
+                  Source coverage
+                </div>
+                <span className="text-xs text-muted">{profile.companyCount} holding(s)</span>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {profile.sources.map((source, index) => (
+                  <motion.div
+                    key={source.label}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.28, delay: index * 0.04 }}
+                    className="rounded-md border border-white/10 bg-white/[0.04] p-3"
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold">{source.label}</div>
+                        <div className="mt-1 text-xs leading-5 text-muted">{source.detail}</div>
+                      </div>
+                      <span className={source.percent >= 70 ? "text-profit" : source.percent >= 35 ? "text-amber" : "text-loss"}>
+                        {source.percent}%
+                      </span>
+                    </div>
+                    <ProgressRail percent={source.percent} tone={source.tone} />
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <CircuitBoard className="text-teal-100" size={18} />
+                  Processing pipeline
+                </div>
+                <span className="text-xs text-muted">before analytics</span>
+              </div>
+              <div className="space-y-3">
+                {profile.stages.map((stage, index) => (
+                  <motion.div
+                    key={stage.label}
+                    initial={{ opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.28, delay: index * 0.05 }}
+                    className="grid gap-3 rounded-md border border-white/10 bg-white/[0.035] p-3 sm:grid-cols-[150px_1fr_58px]"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold">{stage.label}</div>
+                      <div className="mt-1 text-xs text-muted">{stage.detail}</div>
+                    </div>
+                    <div className="self-center">
+                      <ProgressRail percent={stage.percent} tone={stage.tone} />
+                    </div>
+                    <div className={stage.percent >= 75 ? "text-right text-profit" : stage.percent >= 50 ? "text-right text-amber" : "text-right text-loss"}>
+                      {stage.percent}%
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 xl:grid-cols-[1fr_0.8fr]">
+            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                <ShieldCheck className="text-profit" size={18} />
+                Sanity and validation checks
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {profile.checks.map((check) => (
+                  <div key={check.label} className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">{check.label}</span>
+                      <span className={sanityTone(check.status)}>{check.status}</span>
+                    </div>
+                    <p className="text-xs leading-5 text-muted">{check.detail}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-white/10 bg-black/22 p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                <AlertTriangle className={profile.blockers ? "text-loss" : "text-amber"} size={18} />
+                Data issues before analytics
+              </div>
+              <div className="space-y-2">
+                {profile.issues.length ? (
+                  profile.issues.slice(0, 5).map((issue, index) => (
+                    <div key={`${issue}-${index}`} className="rounded-md border border-amber/16 bg-amber/10 p-2 text-xs leading-5 text-amber/90">
+                      {issue}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-md border border-profit/16 bg-profit/10 p-3 text-sm leading-5 text-profit">
+                    No provider warning was returned in the latest analytics run.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ProgressRail({ percent, tone }: { percent: number; tone: "teal" | "cyan" | "green" | "amber" | "rose" | "violet" }) {
+  const gradient =
+    tone === "green"
+      ? "from-emerald-300 via-teal-200 to-emerald-300"
+      : tone === "amber"
+        ? "from-amber via-orange-300 to-amber"
+        : tone === "rose"
+          ? "from-rose-400 via-orange-300 to-rose-400"
+          : tone === "violet"
+            ? "from-violet-300 via-cyan-200 to-violet-300"
+            : "from-cyan-300 via-teal-200 to-cyan-300";
+  return (
+    <div className="h-2 overflow-hidden rounded-full bg-black/50">
+      <motion.div
+        initial={{ width: 0 }}
+        animate={{ width: `${Math.max(0, Math.min(100, percent))}%` }}
+        transition={{ duration: 0.75, ease: "easeOut" }}
+        className={`h-2 rounded-full bg-gradient-to-r ${gradient}`}
+      />
     </div>
   );
 }
@@ -3036,6 +3325,124 @@ function formatElapsed(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+type PipelineTone = "teal" | "cyan" | "green" | "amber" | "rose" | "violet";
+
+function buildDataProvenanceProfile(analytics?: PortfolioAnalytics) {
+  const companies = analytics?.companies ?? [];
+  const companyCount = companies.length;
+  const pct = (count: number) => (companyCount ? Math.round((count / companyCount) * 100) : 0);
+  const noteBlob = companies.flatMap((company) => company.sourceNotes).join(" \n ").toLowerCase();
+  const notesFor = (pattern: string) => companies.filter((company) => company.sourceNotes.some((note) => note.toLowerCase().includes(pattern))).length;
+  const livePriceCoverage = pct(companies.filter((company) => company.lastPrice !== null && company.lastPrice !== undefined).length);
+  const fundamentalsCoverage = pct(
+    companies.filter((company) => company.financials.filter((metric) => metric.value !== "N/A").length >= 7).length
+  );
+  const newsCoverage = pct(companies.filter((company) => company.news.length > 0).length);
+  const yahooCoverage = pct(notesFor("yahoo finance"));
+  const alphaCoverage = pct(notesFor("alpha vantage"));
+  const finnhubCoverage = pct(notesFor("finnhub"));
+  const consensusCoverage = pct(notesFor("validated market snapshot source"));
+  const withheldCoverage = pct(notesFor("withheld live price") + notesFor("rejected consensus"));
+  const passChecks = analytics?.sanityChecks.filter((check) => check.status === "pass").length ?? 0;
+  const totalChecks = analytics?.sanityChecks.length ?? 0;
+  const sanityPassRate = totalChecks ? Math.round((passChecks / totalChecks) * 100) : 0;
+  const blockers = analytics?.sanityChecks.filter((check) => check.status === "fail").length ?? 0;
+  const warningPenalty = Math.min(35, (analytics?.warnings.length ?? 0) * 7 + withheldCoverage * 0.35);
+  const sanitizationScore = Math.max(0, Math.round((analytics?.dataQualityScore ?? 0) - warningPenalty * 0.3));
+  const sourceFetchCoverage = Math.round((livePriceCoverage + fundamentalsCoverage + newsCoverage) / 3);
+
+  return {
+    companyCount,
+    analyticsReadiness: analytics?.dataQualityScore ?? 0,
+    blockers,
+    issues: [
+      ...(analytics?.warnings ?? []),
+      ...(analytics?.sanityChecks.filter((check) => check.status !== "pass").map((check) => `${check.label}: ${check.detail}`) ?? []),
+      ...(noteBlob.includes("withheld live price") ? ["Live price was withheld for at least one holding because validation did not pass."] : []),
+    ],
+    checks:
+      analytics?.sanityChecks.length
+        ? analytics.sanityChecks
+        : [
+            {
+              label: "Waiting for analytics",
+              status: "watch" as const,
+              detail: "Refresh Daily BI to calculate source coverage, validation, and sanity checks.",
+            },
+          ],
+    sources: [
+      {
+        label: "Holdings database",
+        detail: "Zerodha sync or CSV import, used as portfolio truth.",
+        percent: companyCount ? 100 : 0,
+        tone: "green" as PipelineTone,
+      },
+      {
+        label: "Yahoo Finance",
+        detail: "Chart, profile/news, fundamentals, and no-key fallback.",
+        percent: yahooCoverage,
+        tone: "cyan" as PipelineTone,
+      },
+      {
+        label: "Alpha Vantage",
+        detail: "Optional independent daily OHLCV validation when key is configured.",
+        percent: alphaCoverage,
+        tone: alphaCoverage ? "violet" as PipelineTone : "amber" as PipelineTone,
+      },
+      {
+        label: "Finnhub",
+        detail: "Optional quote/candle validation when key is configured.",
+        percent: finnhubCoverage,
+        tone: finnhubCoverage ? "teal" as PipelineTone : "amber" as PipelineTone,
+      },
+      {
+        label: "Consensus market snapshot",
+        detail: "Accepted live price after provider sanitization and cross-checking.",
+        percent: consensusCoverage || livePriceCoverage,
+        tone: "green" as PipelineTone,
+      },
+      {
+        label: "AI engineer layer",
+        detail: "Optional explanation/cross-check after validated analytics, not raw market data.",
+        percent: analytics ? analytics.dataQualityScore : 0,
+        tone: "violet" as PipelineTone,
+      },
+    ],
+    stages: [
+      {
+        label: "1. Ingest",
+        detail: "Holdings loaded",
+        percent: companyCount ? 100 : 0,
+        tone: "green" as PipelineTone,
+      },
+      {
+        label: "2. Source fetch",
+        detail: "Price, financials, news",
+        percent: sourceFetchCoverage,
+        tone: "cyan" as PipelineTone,
+      },
+      {
+        label: "3. Sanitization",
+        detail: "Invalid values removed",
+        percent: sanitizationScore,
+        tone: sanitizationScore >= 70 ? "green" as PipelineTone : "amber" as PipelineTone,
+      },
+      {
+        label: "4. Validation",
+        detail: "Consensus and sanity gate",
+        percent: Math.round((livePriceCoverage + sanityPassRate) / 2),
+        tone: withheldCoverage ? "amber" as PipelineTone : "teal" as PipelineTone,
+      },
+      {
+        label: "5. Analytics feed",
+        detail: "BI model readiness",
+        percent: analytics?.dataQualityScore ?? 0,
+        tone: (analytics?.dataQualityScore ?? 0) >= 75 ? "green" as PipelineTone : "amber" as PipelineTone,
+      },
+    ],
+  };
 }
 
 function scoreTone(score: number) {
