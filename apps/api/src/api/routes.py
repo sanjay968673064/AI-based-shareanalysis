@@ -35,7 +35,7 @@ from src.services.company_analytics_service import CompanyAnalyticsService
 from src.services.daily_refresh_service import daily_refresh_service
 from src.services.intelligence_service import IntelligenceService
 from src.services.openai_analytics_service import OpenAiAnalyticsService
-from src.services.openai_settings_service import OpenAiSettingsService
+from src.services.openai_settings_service import AiConnectionValidationError, OpenAiSettingsService
 from src.services.portfolio_service import PortfolioService
 from src.services.stock_discovery_service import StockDiscoveryService
 
@@ -261,7 +261,10 @@ async def save_openai_settings(
     context: UserContext = Depends(get_user_context),
     service: OpenAiSettingsService = Depends(get_openai_settings_service),
 ) -> OpenAiSettingsRead:
-    return await service.save(context, payload)
+    try:
+        return await service.save(context, payload)
+    except AiConnectionValidationError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.delete(

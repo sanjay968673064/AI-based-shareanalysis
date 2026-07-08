@@ -34,7 +34,7 @@ import {
   Wallet,
   X
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   AiAnalyticsInsight,
   CompanyAnalytics,
@@ -367,7 +367,7 @@ export function Dashboard() {
       });
       queryClient.setQueryData(["openai-settings"], latest);
       setOpenAiKeyInput("");
-      setOpenAiMessage(`${aiProviderInput === "gemini" ? "Gemini" : "OpenAI"} key saved locally for analytics.`);
+      setOpenAiMessage(`${aiProviderInput === "gemini" ? "Gemini" : "OpenAI"} connection verified successfully.`);
       await refetchOpenAiSettings();
     } catch (error) {
       setOpenAiError(error instanceof Error ? error.message : "Unable to save OpenAI key.");
@@ -1046,6 +1046,9 @@ function OpenAiConfigPanel({
           detail: "This model was already saved. Select the recommended model if this one fails."
         }
       ];
+  const isConnected = Boolean(settings?.configured);
+  const connectedProvider = settings?.provider ?? provider;
+  const connectedLabel = providerLabel(connectedProvider);
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:items-center">
@@ -1065,9 +1068,56 @@ function OpenAiConfigPanel({
           </button>
         </div>
 
-        <div className="mb-4 rounded-md border border-white/10 bg-black/20 p-3 text-sm text-muted">
-          Status: {settings?.configured ? `${providerLabel(settings.provider)} configured ${settings.maskedKey ?? ""}` : "Not configured"}
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 8, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.28, ease: "easeOut" }}
+          className={`mb-4 overflow-hidden rounded-md border p-4 ${
+            isConnected
+              ? "border-profit/28 bg-[linear-gradient(135deg,rgba(34,197,94,0.16),rgba(45,212,191,0.08),rgba(0,0,0,0.22))]"
+              : "border-amber/22 bg-amber/10"
+          }`}
+        >
+          <div className="flex items-start gap-3">
+            <div
+              className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md ${
+                isConnected ? "bg-profit/15 text-profit" : "bg-amber/14 text-amber"
+              }`}
+            >
+              {isConnected ? (
+                <>
+                  <span className="absolute h-11 w-11 animate-ping rounded-md bg-profit/18" />
+                  <CheckCircle2 size={22} className="relative" />
+                </>
+              ) : (
+                <KeyRound size={22} />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className={`text-base font-semibold ${isConnected ? "text-profit" : "text-amber"}`}>
+                {isConnected ? `Successfully connected with ${connectedLabel}` : `${providerLabel(provider)} is not connected`}
+              </div>
+              <p className="mt-1 text-sm leading-5 text-muted">
+                {isConnected
+                  ? `Live connection verified. Saved key ${settings?.maskedKey ?? "is active"} using ${settings?.model ?? "selected model"}. You can now run AI analysis.`
+                  : `Paste your ${providerLabel(provider)} API key and save it to unlock AI-powered portfolio analysis.`}
+              </p>
+              {isConnected ? (
+                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+                  <div className="rounded-md border border-profit/18 bg-black/20 px-3 py-2 text-muted">
+                    Provider <span className="ml-1 text-foreground">{connectedLabel}</span>
+                  </div>
+                  <div className="rounded-md border border-profit/18 bg-black/20 px-3 py-2 text-muted">
+                    Model <span className="ml-1 text-foreground">{settings?.model}</span>
+                  </div>
+                  <div className="rounded-md border border-profit/18 bg-black/20 px-3 py-2 text-muted sm:col-span-2">
+                    Validation <span className="ml-1 text-profit">Provider accepted test request</span>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </motion.div>
 
         <div className="space-y-4">
           <label className="block">
@@ -1134,7 +1184,7 @@ function OpenAiConfigPanel({
           ) : null}
           <Button type="button" onClick={onSave} disabled={isSaving || apiKey.trim().length < 20}>
             <KeyRound size={18} />
-            {isSaving ? "Saving" : `Save ${providerLabel(provider)} Key`}
+            {isSaving ? "Validating connection" : `Validate & Save ${providerLabel(provider)} Key`}
           </Button>
         </div>
       </div>
@@ -1593,6 +1643,267 @@ function PortfolioAnalyticsView({
             </div>
           </div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StockDiscoveryView({
+  discovery,
+  isLoading,
+  onRefresh
+}: {
+  discovery?: StockDiscovery;
+  isLoading: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  const [riskProfile, setRiskProfile] = useState<InvestorRiskProfile>("balanced");
+  const [horizon, setHorizon] = useState<InvestorHorizon>("long");
+  const [capital, setCapital] = useState(100000);
+  const [selectedSymbol, setSelectedSymbol] = useState("");
+  const candidates = useMemo(() => discovery?.candidates ?? [], [discovery?.candidates]);
+  const selected = candidates.find((item) => item.symbol === selectedSymbol) ?? candidates[0];
+  const profile = getInvestorProfileConfig(riskProfile, horizon);
+  const filtered = candidates.filter((candidate) => profile.allows(candidate.riskLevel));
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("investor-profile");
+    if (!saved) {
+      return;
+    }
+    try {
+      const parsed = JSON.parse(saved) as {
+        riskProfile?: InvestorRiskProfile;
+        horizon?: InvestorHorizon;
+        capital?: number;
+      };
+      if (parsed.riskProfile) setRiskProfile(parsed.riskProfile);
+      if (parsed.horizon) setHorizon(parsed.horizon);
+      if (parsed.capital) setCapital(parsed.capital);
+    } catch {
+      // Ignore invalid local profile; user can reset it from the controls.
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("investor-profile", JSON.stringify({ riskProfile, horizon, capital }));
+  }, [capital, horizon, riskProfile]);
+
+  useEffect(() => {
+    if (!selectedSymbol && candidates[0]) {
+      setSelectedSymbol(candidates[0].symbol);
+    }
+  }, [candidates, selectedSymbol]);
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-sky-200/14 bg-[#07111d] shadow-[0_28px_90px_rgba(14,165,233,0.16)]">
+      <div className="relative border-b border-sky-200/14 bg-[radial-gradient(circle_at_10%_0%,rgba(14,165,233,0.28),transparent_34%),linear-gradient(135deg,rgba(12,74,110,0.42),rgba(7,17,29,0.96))] p-4">
+        <div className="market-scanline" />
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-3xl">
+            <div className="mb-2 flex items-center gap-2 text-sm text-sky-100">
+              <Search size={18} />
+              New Share Discovery
+            </div>
+            <h2 className="text-2xl font-semibold tracking-normal">Find new shares beyond your current portfolio</h2>
+            <p className="mt-2 text-sm leading-6 text-sky-50/70">
+              The research engine scans a curated NSE universe, removes stocks you already hold, and ranks candidates by business quality, cash flow, growth, valuation discipline, news coverage and data quality.
+            </p>
+          </div>
+          <Button type="button" onClick={onRefresh} disabled={isLoading}>
+            <RefreshCw size={18} className={isLoading ? "animate-spin" : ""} />
+            {isLoading ? "Scanning" : "Scan Market"}
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid gap-3 border-b border-sky-200/10 bg-black/16 p-4 md:grid-cols-2 xl:grid-cols-4">
+        <ProfileControl
+          label="Risk profile"
+          value={riskProfile}
+          options={[
+            ["conservative", "Conservative"],
+            ["balanced", "Balanced"],
+            ["aggressive", "Aggressive"]
+          ]}
+          onChange={(value) => setRiskProfile(value as InvestorRiskProfile)}
+        />
+        <ProfileControl
+          label="Time horizon"
+          value={horizon}
+          options={[
+            ["short", "Short"],
+            ["swing", "Swing"],
+            ["long", "Long term"]
+          ]}
+          onChange={(value) => setHorizon(value as InvestorHorizon)}
+        />
+        <label className="rounded-md border border-sky-200/12 bg-white/[0.045] p-3">
+          <span className="mb-2 block text-xs text-muted">Deployable capital</span>
+          <input
+            type="number"
+            min={0}
+            step={5000}
+            value={capital}
+            onChange={(event) => setCapital(Number(event.target.value))}
+            className="w-full rounded-md border border-white/10 bg-black/24 px-3 py-2 text-sm outline-none focus:border-sky-200/60"
+          />
+        </label>
+        <div className="rounded-md border border-sky-200/12 bg-white/[0.045] p-3">
+          <div className="text-xs text-muted">Profile rule</div>
+          <div className="mt-2 text-sm leading-5 text-sky-50/80">{profile.rule}</div>
+        </div>
+      </div>
+
+      <div className="grid gap-4 p-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <section className="rounded-md border border-sky-200/12 bg-white/[0.045] p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div>
+              <h3 className="text-base font-semibold">Ranked candidates</h3>
+              <p className="text-sm text-sky-50/58">
+                {filtered.length}/{candidates.length} match your profile
+              </p>
+            </div>
+            <Sparkles className="text-sky-200" size={20} />
+          </div>
+          <div className="space-y-2">
+            {(filtered.length ? filtered : candidates).map((candidate, index) => (
+              <motion.button
+                key={candidate.symbol}
+                type="button"
+                initial={{ opacity: 0, x: -14 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.035, duration: 0.22 }}
+                onClick={() => setSelectedSymbol(candidate.symbol)}
+                className={`holo-card w-full rounded-md border p-3 text-left transition hover:-translate-y-0.5 ${
+                  selected?.symbol === candidate.symbol
+                    ? "border-sky-200/45 bg-sky-300/12"
+                    : "border-sky-200/12 bg-black/22 hover:border-sky-200/28"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="font-medium">{candidate.symbol}</div>
+                    <div className="truncate text-xs text-muted">{candidate.companyName}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className={scoreTone(candidate.discoveryScore)}>{candidate.discoveryScore}</div>
+                    <div className="text-xs text-muted">{candidate.conviction}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                  <span className={`rounded-md border px-2 py-1 ${riskPill(candidate.riskLevel)}`}>{candidate.riskLevel} risk</span>
+                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-muted">
+                    Data {candidate.dataQualityScore}/100
+                  </span>
+                  <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-muted">
+                    {candidate.sector ?? "Sector N/A"}
+                  </span>
+                </div>
+              </motion.button>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-md border border-sky-200/12 bg-white/[0.045] p-4">
+          {selected ? (
+            <>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm text-sky-50/58">{selected.sector ?? "Sector unavailable"}</div>
+                  <h3 className="text-2xl font-semibold">{selected.symbol}</h3>
+                  <p className="text-sm text-muted">{selected.companyName}</p>
+                </div>
+                <span className={`rounded-md border px-2 py-1 text-sm ${riskPill(selected.riskLevel)}`}>
+                  {selected.recommendation}
+                </span>
+              </div>
+
+              <div className="mb-4 grid gap-3 sm:grid-cols-4">
+                <ReportFact label="Discovery" value={`${selected.discoveryScore}/100`} tone={scoreTone(selected.discoveryScore)} />
+                <ReportFact label="Conviction" value={selected.conviction} />
+                <ReportFact label="Risk" value={selected.riskLevel} tone={selected.riskLevel === "High" ? "text-loss" : selected.riskLevel === "Medium" ? "text-amber" : "text-profit"} />
+                <ReportFact label="Starter size" value={formatCurrency(recommendedStarterSize(capital, selected.riskLevel, riskProfile))} />
+              </div>
+
+              <div className="rounded-md border border-sky-200/12 bg-black/24 p-4">
+                <div className="mb-2 text-sm font-semibold text-sky-100">AI + research decision view</div>
+                <p className="text-sm leading-6 text-foreground/84">{selected.researchView}</p>
+              </div>
+
+              <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                <DiscoveryList title="Why consider buying" items={selected.whyBuy} tone="text-profit" />
+                <DiscoveryList title="Company potential" items={selected.companyPotential} tone="text-sky-200" />
+                <DiscoveryList title="Risks" items={selected.risks} tone="text-loss" />
+                <DiscoveryList title="Verify before buying" items={selected.verificationTriggers} tone="text-amber" />
+              </div>
+
+              <div className="mt-4 rounded-md border border-amber/20 bg-amber/10 p-3 text-sm leading-6 text-amber/90">
+                {selected.entryDiscipline}
+              </div>
+            </>
+          ) : (
+            <div className="rounded-md border border-amber/20 bg-amber/10 p-4 text-sm text-amber">
+              No discovery candidates are available yet. Click Scan Market after your backend is running.
+            </div>
+          )}
+        </section>
+      </div>
+
+      {discovery?.warnings.length ? (
+        <div className="border-t border-sky-200/10 bg-black/18 p-4">
+          <div className="grid gap-2 lg:grid-cols-2">
+            {discovery.warnings.slice(0, 6).map((warning) => (
+              <div key={warning} className="rounded-md border border-amber/15 bg-amber/10 p-3 text-sm leading-5 text-amber/90">
+                {warning}
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ProfileControl({
+  label,
+  value,
+  options,
+  onChange
+}: {
+  label: string;
+  value: string;
+  options: Array<[string, string]>;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label className="rounded-md border border-sky-200/12 bg-white/[0.045] p-3">
+      <span className="mb-2 block text-xs text-muted">{label}</span>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="w-full rounded-md border border-white/10 bg-black/24 px-3 py-2 text-sm outline-none focus:border-sky-200/60"
+      >
+        {options.map(([id, optionLabel]) => (
+          <option key={id} value={id}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function DiscoveryList({ title, items, tone }: { title: string; items: string[]; tone: string }) {
+  return (
+    <div className="rounded-md border border-sky-200/12 bg-black/22 p-3">
+      <div className={`mb-2 text-sm font-semibold ${tone}`}>{title}</div>
+      <div className="space-y-2">
+        {items.map((item, index) => (
+          <div key={`${item}-${index}`} className="text-sm leading-5 text-muted">
+            {item}
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -3008,6 +3319,47 @@ function getDecisionGrade(qualityScore: number, healthScore: number, concentrati
     detail: "Good enough for screening, not enough for blind execution.",
     tone: "text-cyan-100"
   };
+}
+
+function getInvestorProfileConfig(riskProfile: InvestorRiskProfile, horizon: InvestorHorizon) {
+  const horizonText = {
+    short: "short-term trades need stricter price confirmation",
+    swing: "swing trades need trend and result confirmation",
+    long: "long-term investing needs business quality and valuation comfort"
+  }[horizon];
+
+  if (riskProfile === "conservative") {
+    return {
+      rule: `Show low-risk candidates first; ${horizonText}.`,
+      allows: (risk: string) => risk === "Low"
+    };
+  }
+  if (riskProfile === "aggressive") {
+    return {
+      rule: `Allow higher-risk ideas, but use smaller starter sizes; ${horizonText}.`,
+      allows: () => true
+    };
+  }
+  return {
+    rule: `Prefer low/medium-risk candidates; ${horizonText}.`,
+    allows: (risk: string) => risk !== "High"
+  };
+}
+
+function recommendedStarterSize(capital: number, riskLevel: string, profile: InvestorRiskProfile) {
+  const profilePct = profile === "conservative" ? 0.04 : profile === "aggressive" ? 0.075 : 0.055;
+  const riskMultiplier = riskLevel === "High" ? 0.35 : riskLevel === "Medium" ? 0.7 : 1;
+  return Math.max(0, capital * profilePct * riskMultiplier);
+}
+
+function riskPill(riskLevel: string) {
+  if (riskLevel === "High") {
+    return "border-loss/30 bg-loss/10 text-loss";
+  }
+  if (riskLevel === "Medium") {
+    return "border-amber/30 bg-amber/10 text-amber";
+  }
+  return "border-profit/30 bg-profit/10 text-profit";
 }
 
 function buildReportActions(data: PortfolioSummary, intelligence?: PortfolioIntelligence): ReportAction[] {
