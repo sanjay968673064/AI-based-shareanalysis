@@ -1,4 +1,4 @@
-tyrew# Analytics Engine
+# Analytics Engine
 
 The Analytics tab is a holdings-only business-intelligence engine. It does not scan unrelated market stocks and it does not execute trades.
 
@@ -12,9 +12,13 @@ The Analytics tab is a holdings-only business-intelligence engine. It does not s
 ## Data Inputs
 
 - Current holdings from the local portfolio database.
-- Yahoo Finance chart data for live price, one-year price trend, volatility, and 52-week position.
+- Consensus market snapshots for live price and OHLCV enrichment. `MARKET_DATA_PROVIDER=multi` uses Yahoo Finance plus configured Alpha Vantage and Finnhub keys.
+- Market data sanitization removes invalid prices, malformed OHLCV rows, impossible high/low relationships, and non-finite values before analytics sees the data.
+- Consensus validation compares source prices and withholds live price replacement when configured sources disagree beyond `MARKET_DATA_CONSENSUS_PRICE_TOLERANCE_PCT`.
+- Yahoo Finance chart data remains available as the no-key fallback for one-year price trend, volatility, and 52-week position.
 - Yahoo Finance annual fundamentals time series for revenue, net income, debt, equity, cash, assets, liabilities, operating cash flow, free cash flow, and EPS.
 - Yahoo Finance search/news for company profile and recent news signals.
+- Fundamental and news data are still provider-limited and are scored conservatively when missing. They are not treated as multi-source verified yet.
 
 ## Scoring
 

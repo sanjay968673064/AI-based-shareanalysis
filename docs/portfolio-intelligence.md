@@ -12,22 +12,25 @@ The backend analysis engine produces advisory-only portfolio decisions. It never
 
 ## Market Data
 
-Default enrichment uses no-key Yahoo Finance chart data for live price and one-year daily OHLCV history.
+Default enrichment uses consensus mode. Yahoo Finance remains the no-key fallback, and Alpha Vantage/Finnhub join the validation set when keys are configured.
 
 ```env
-MARKET_DATA_PROVIDER=yahoo
+MARKET_DATA_PROVIDER=multi
 MARKET_DATA_TIMEOUT_SECONDS=6
 MARKET_DATA_MAX_CONCURRENCY=8
+MARKET_DATA_CONSENSUS_PRICE_TOLERANCE_PCT=3
 ```
 
-The service maps NSE symbols to `.NS` and BSE symbols to `.BO`. If a symbol is not covered or the provider is slow, analysis still completes with a warning and lower conviction.
+The service sanitizes OHLCV rows, rejects invalid prices, and withholds live price replacement when source prices disagree beyond the consensus tolerance. If a symbol is not covered or a provider is slow, analysis still completes with a warning and lower conviction.
 
-Optional settings are reserved for production-grade adapters:
+Optional keys activate independent validation sources:
 
 ```env
 ALPHA_VANTAGE_API_KEY=
 FINNHUB_API_KEY=
 ```
+
+Yahoo symbols map NSE to `.NS` and BSE to `.BO`; Alpha Vantage uses `.NSE`/`.BSE`; Finnhub uses `NSE:`/`BSE:` prefixes.
 
 ## Decision Inputs
 
