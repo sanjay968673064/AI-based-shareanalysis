@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  Cpu,
   Database,
   FileText,
   Gauge,
@@ -25,8 +26,10 @@ import {
   Newspaper,
   PieChart,
   RefreshCw,
+  RadioTower,
   Search,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Target,
   TrendingUp,
@@ -1049,145 +1052,272 @@ function OpenAiConfigPanel({
   const isConnected = Boolean(settings?.configured);
   const connectedProvider = settings?.provider ?? provider;
   const connectedLabel = providerLabel(connectedProvider);
+  const selectedModelDetail =
+    geminiModelOptions.find((option) => option.value === model)?.detail ??
+    "Use the recommended model unless Google AI Studio says a specific model is unavailable for your key.";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 px-4 py-6 backdrop-blur-sm sm:items-center">
-      <div className="my-auto w-full max-w-lg rounded-lg border border-border bg-panel p-5 shadow-glow">
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold">AI configuration</h2>
-            <p className="mt-1 text-sm text-muted">Save a Gemini or OpenAI API key locally for AI-powered analytics.</p>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#030507]/86 px-3 py-4 backdrop-blur-xl sm:items-center sm:px-6">
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.97 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 16, scale: 0.98 }}
+        transition={{ duration: 0.32, ease: "easeOut" }}
+        className="ai-config-shell my-auto w-full max-w-5xl overflow-hidden rounded-lg border border-white/[0.12] bg-[#090d13] shadow-[0_30px_110px_rgba(0,0,0,0.65)]"
+      >
+        <div className="ai-config-topbar flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-cyan-300/24 bg-cyan-300/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.26em] text-cyan-100">
+                AI Command Deck
+              </span>
+              <span className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] ${
+                isConnected ? "border-emerald-300/32 bg-emerald-300/12 text-emerald-100" : "border-amber/32 bg-amber/10 text-amber"
+              }`}>
+                {isConnected ? "Live Link" : "Awaiting Key"}
+              </span>
+            </div>
+            <h2 className="text-2xl font-semibold leading-tight text-white sm:text-3xl">AI configuration</h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-300">
+              Wire Gemini or OpenAI into the analytics engine. Keys stay local on your server, then every portfolio run uses the selected model.
+            </p>
           </div>
           <button
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="rounded-md border border-border bg-white/5 p-2 text-muted transition hover:bg-white/10 hover:text-foreground"
+            className="shrink-0 rounded-md border border-white/[0.12] bg-white/[0.07] p-2 text-slate-300 transition hover:border-cyan-200/50 hover:bg-cyan-200/[0.12] hover:text-white"
           >
-            <X size={16} />
+            <X size={18} />
           </button>
         </div>
 
-        <motion.div
-          initial={{ opacity: 0, y: 8, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ duration: 0.28, ease: "easeOut" }}
-          className={`mb-4 overflow-hidden rounded-md border p-4 ${
-            isConnected
-              ? "border-profit/28 bg-[linear-gradient(135deg,rgba(34,197,94,0.16),rgba(45,212,191,0.08),rgba(0,0,0,0.22))]"
-              : "border-amber/22 bg-amber/10"
-          }`}
-        >
-          <div className="flex items-start gap-3">
-            <div
-              className={`relative flex h-11 w-11 shrink-0 items-center justify-center rounded-md ${
-                isConnected ? "bg-profit/15 text-profit" : "bg-amber/14 text-amber"
-              }`}
-            >
-              {isConnected ? (
-                <>
-                  <span className="absolute h-11 w-11 animate-ping rounded-md bg-profit/18" />
-                  <CheckCircle2 size={22} className="relative" />
-                </>
-              ) : (
-                <KeyRound size={22} />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className={`text-base font-semibold ${isConnected ? "text-profit" : "text-amber"}`}>
-                {isConnected ? `Successfully connected with ${connectedLabel}` : `${providerLabel(provider)} is not connected`}
+        <div className="grid gap-0 lg:grid-cols-[0.92fr_1.08fr]">
+          <section className={`ai-command-core relative overflow-hidden border-b border-white/10 p-5 sm:p-6 lg:border-b-0 lg:border-r ${
+            isConnected ? "is-live border-emerald-300/[0.18]" : "is-waiting border-amber/[0.18]"
+          }`}>
+            <div className="ai-scan-mesh" />
+            <div className="relative z-10 flex min-h-full flex-col gap-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className={`text-xs font-semibold uppercase tracking-[0.24em] ${isConnected ? "text-emerald-100/70" : "text-amber/80"}`}>
+                    {isConnected ? "Provider handshake complete" : "Provider handshake required"}
+                  </div>
+                  <h3 className={`mt-2 text-2xl font-semibold leading-tight ${isConnected ? "text-emerald-50" : "text-amber"}`}>
+                    {isConnected ? `${connectedLabel} is online` : `${providerLabel(provider)} is offline`}
+                  </h3>
+                  <p className="mt-3 max-w-md text-sm leading-6 text-slate-200/74">
+                    {isConnected
+                      ? "The provider accepted a live test request. Portfolio AI analysis is unlocked for this account."
+                      : `Paste your ${providerLabel(provider)} API key and validate it to unlock AI analysis.`}
+                  </p>
+                </div>
+                <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${isConnected ? "border-emerald-200/30 bg-emerald-300/12 text-emerald-100" : "border-amber/30 bg-amber/10 text-amber"}`}>
+                  {isConnected ? "Synced" : "Locked"}
+                </div>
               </div>
-              <p className="mt-1 text-sm leading-5 text-muted">
-                {isConnected
-                  ? `Live connection verified. Saved key ${settings?.maskedKey ?? "is active"} using ${settings?.model ?? "selected model"}. You can now run AI analysis.`
-                  : `Paste your ${providerLabel(provider)} API key and save it to unlock AI-powered portfolio analysis.`}
-              </p>
-              {isConnected ? (
-                <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-                  <div className="rounded-md border border-profit/18 bg-black/20 px-3 py-2 text-muted">
-                    Provider <span className="ml-1 text-foreground">{connectedLabel}</span>
-                  </div>
-                  <div className="rounded-md border border-profit/18 bg-black/20 px-3 py-2 text-muted">
-                    Model <span className="ml-1 text-foreground">{settings?.model}</span>
-                  </div>
-                  <div className="rounded-md border border-profit/18 bg-black/20 px-3 py-2 text-muted sm:col-span-2">
-                    Validation <span className="ml-1 text-profit">Provider accepted test request</span>
+
+              <div className="flex flex-1 items-center justify-center py-2">
+                <div className={`ai-neural-ring ${isConnected ? "is-live" : "is-waiting"}`}>
+                  <div className="ai-neural-node ai-neural-node-a" />
+                  <div className="ai-neural-node ai-neural-node-b" />
+                  <div className="ai-neural-node ai-neural-node-c" />
+                  <div className="relative z-10 flex h-24 w-24 items-center justify-center rounded-full border border-white/[0.14] bg-black/[0.36] text-white shadow-[inset_0_0_30px_rgba(255,255,255,0.06)]">
+                    {isConnected ? <CheckCircle2 size={42} /> : <KeyRound size={42} />}
                   </div>
                 </div>
-              ) : null}
-            </div>
-          </div>
-        </motion.div>
-
-        <div className="space-y-4">
-          <label className="block">
-            <span className="mb-2 block text-sm text-muted">AI provider</span>
-            <select
-              value={provider}
-              onChange={(event) => onProviderChange(event.target.value as AiProvider)}
-              className="w-full rounded-md border border-border bg-black/30 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
-            >
-              <option value="gemini">Gemini</option>
-              <option value="openai">OpenAI</option>
-            </select>
-          </label>
-          <label className="block">
-            <span className="mb-2 block text-sm text-muted">{providerLabel(provider)} API key</span>
-            <input
-              type="password"
-              value={apiKey}
-              onChange={(event) => onApiKeyChange(event.target.value)}
-              placeholder={provider === "gemini" ? "AIza..." : "sk-..."}
-              className="w-full rounded-md border border-border bg-black/30 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
-            />
-          </label>
-          {provider === "gemini" ? (
-            <label className="block">
-              <span className="mb-2 block text-sm text-muted">Gemini model</span>
-              <select
-                value={model}
-                onChange={(event) => onModelChange(event.target.value)}
-                className="w-full rounded-md border border-border bg-black/30 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
-              >
-                {geminiModelOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label} {option.value === RECOMMENDED_GEMINI_MODEL ? "(Recommended)" : ""}
-                  </option>
-                ))}
-              </select>
-              <div className="mt-3 rounded-md border border-cyan-200/12 bg-cyan-300/[0.06] p-3 text-xs leading-5 text-cyan-50/72">
-                {geminiModelOptions.find((option) => option.value === model)?.detail ??
-                  "Use the recommended model unless Google AI Studio says a specific model is unavailable for your key."}
               </div>
-            </label>
-          ) : (
-            <label className="block">
-              <span className="mb-2 block text-sm text-muted">OpenAI model</span>
-              <input
-                type="text"
-                value={model}
-                onChange={(event) => onModelChange(event.target.value)}
-                className="w-full rounded-md border border-border bg-black/30 px-3 py-2 text-sm text-foreground outline-none transition focus:border-accent"
-              />
-            </label>
-          )}
-        </div>
 
-        {message ? <div className="mt-4 rounded-md border border-profit/20 bg-profit/10 p-3 text-sm text-profit">{message}</div> : null}
-        {error ? <div className="mt-4 rounded-md border border-loss/20 bg-loss/10 p-3 text-sm text-loss">{error}</div> : null}
+              <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+                <AiConnectionStat label="Provider" value={isConnected ? connectedLabel : providerLabel(provider)} tone={isConnected ? "live" : "waiting"} />
+                <AiConnectionStat label="Model" value={isConnected ? settings?.model ?? model : model || "Select model"} tone={isConnected ? "live" : "waiting"} />
+                <AiConnectionStat label="Key" value={isConnected ? settings?.maskedKey ?? "Verified" : "Not saved"} tone={isConnected ? "live" : "waiting"} />
+              </div>
 
-        <div className="mt-5 flex flex-wrap justify-end gap-2">
-          {settings?.configured ? (
-            <Button type="button" variant="ghost" onClick={onDelete} disabled={isSaving}>
-              Remove Key
-            </Button>
-          ) : null}
-          <Button type="button" onClick={onSave} disabled={isSaving || apiKey.trim().length < 20}>
-            <KeyRound size={18} />
-            {isSaving ? "Validating connection" : `Validate & Save ${providerLabel(provider)} Key`}
-          </Button>
+              <div className="rounded-lg border border-white/10 bg-black/[0.24] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-300/80">Validation route</span>
+                  <span className={`rounded-full px-2.5 py-1 text-xs ${isConnected ? "bg-emerald-300/14 text-emerald-100" : "bg-amber/12 text-amber"}`}>
+                    {isConnected ? "Provider accepted test request" : "Waiting for live test"}
+                  </span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-black/[0.46]">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: isConnected ? "100%" : "38%" }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                    className={`h-2 rounded-full ${isConnected ? "bg-gradient-to-r from-emerald-300 via-cyan-200 to-emerald-300" : "bg-gradient-to-r from-amber via-orange-300 to-amber"}`}
+                  />
+                </div>
+              </div>
+
+              {message ? <div className="rounded-md border border-profit/20 bg-profit/10 p-3 text-sm leading-5 text-profit">{message}</div> : null}
+              {error ? <div className="rounded-md border border-loss/20 bg-loss/10 p-3 text-sm leading-5 text-loss">{error}</div> : null}
+            </div>
+          </section>
+
+          <section className="relative overflow-hidden p-5 sm:p-6">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_78%_0%,rgba(56,189,248,0.14),transparent_34%),radial-gradient(circle_at_8%_94%,rgba(16,185,129,0.1),transparent_34%)]" />
+            <div className="relative z-10 space-y-5">
+              <div>
+                <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-300">
+                  <SlidersHorizontal size={15} />
+                  Provider matrix
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <AiProviderChoice
+                    value="gemini"
+                    label="Gemini"
+                    detail="Fast free-tier analytics"
+                    active={provider === "gemini"}
+                    icon={Sparkles}
+                    onClick={() => onProviderChange("gemini")}
+                  />
+                  <AiProviderChoice
+                    value="openai"
+                    label="OpenAI"
+                    detail="Custom model routing"
+                    active={provider === "openai"}
+                    icon={Bot}
+                    onClick={() => onProviderChange("openai")}
+                  />
+                </div>
+              </div>
+
+              <label className="block">
+                <span className="mb-2 flex items-center justify-between gap-3 text-sm text-slate-300">
+                  <span>{providerLabel(provider)} API key</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-xs text-slate-400">Local encrypted vault</span>
+                </span>
+                <div className="relative">
+                  <KeyRound className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cyan-100/[0.54]" size={18} />
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(event) => onApiKeyChange(event.target.value)}
+                    placeholder={provider === "gemini" ? "AIza..." : "sk-..."}
+                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.34] py-3 pl-10 pr-3 text-sm text-foreground outline-none transition placeholder:text-slate-600 focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
+                  />
+                </div>
+              </label>
+
+              {provider === "gemini" ? (
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">Gemini model</span>
+                  <select
+                    value={model}
+                    onChange={(event) => onModelChange(event.target.value)}
+                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.34] px-3 py-3 text-sm text-foreground outline-none transition focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
+                  >
+                    {geminiModelOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label} {option.value === RECOMMENDED_GEMINI_MODEL ? "(Recommended)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="mt-3 rounded-lg border border-cyan-200/14 bg-cyan-300/[0.07] p-4 text-xs leading-5 text-cyan-50/76">
+                    {selectedModelDetail}
+                  </div>
+                </label>
+              ) : (
+                <label className="block">
+                  <span className="mb-2 block text-sm text-slate-300">OpenAI model</span>
+                  <input
+                    type="text"
+                    value={model}
+                    onChange={(event) => onModelChange(event.target.value)}
+                    className="ai-config-input w-full rounded-lg border border-white/[0.12] bg-black/[0.34] px-3 py-3 text-sm text-foreground outline-none transition focus:border-cyan-200/70 focus:ring-2 focus:ring-cyan-300/20"
+                  />
+                </label>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
+                  <RadioTower className="mb-2 text-cyan-100/70" size={18} />
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Live test</div>
+                  <div className="mt-1 text-sm text-white">Required</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
+                  <ShieldCheck className="mb-2 text-emerald-100/70" size={18} />
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Storage</div>
+                  <div className="mt-1 text-sm text-white">Server-side</div>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.035] p-3">
+                  <Cpu className="mb-2 text-amber/80" size={18} />
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Mode</div>
+                  <div className="mt-1 text-sm text-white">Analytics</div>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t border-white/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                {settings?.configured ? (
+                  <Button type="button" variant="ghost" onClick={onDelete} disabled={isSaving} className="border-loss/30 text-loss hover:bg-loss/10">
+                    Remove Key
+                  </Button>
+                ) : (
+                  <span className="text-xs leading-5 text-slate-500">Validation sends a tiny provider test request before saving.</span>
+                )}
+                <Button
+                  type="button"
+                  onClick={onSave}
+                  disabled={isSaving || apiKey.trim().length < 20}
+                  className="h-11 bg-cyan-300 px-4 text-black shadow-[0_0_30px_rgba(34,211,238,0.24)] hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <KeyRound size={18} />
+                  {isSaving ? "Validating connection" : `Validate & Save ${providerLabel(provider)} Key`}
+                </Button>
+              </div>
+            </div>
+          </section>
         </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function AiProviderChoice({
+  label,
+  detail,
+  active,
+  icon: Icon,
+  onClick
+}: {
+  value: AiProvider;
+  label: string;
+  detail: string;
+  active: boolean;
+  icon: typeof Bot;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group rounded-lg border p-4 text-left transition ${
+        active
+          ? "border-cyan-200/60 bg-cyan-300/12 shadow-[0_0_30px_rgba(34,211,238,0.15)]"
+          : "border-white/10 bg-white/[0.035] hover:border-white/[0.22] hover:bg-white/[0.065]"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <span className={`flex h-11 w-11 items-center justify-center rounded-lg border ${
+          active ? "border-cyan-100/40 bg-cyan-200/[0.16] text-cyan-50" : "border-white/10 bg-black/[0.24] text-slate-300"
+        }`}>
+          <Icon size={21} />
+        </span>
+        <span className={`h-3 w-3 rounded-full ${active ? "bg-cyan-200 shadow-[0_0_18px_rgba(103,232,249,0.8)]" : "bg-slate-700"}`} />
       </div>
+      <div className="mt-4 text-base font-semibold text-white">{label}</div>
+      <div className="mt-1 text-sm text-slate-400">{detail}</div>
+    </button>
+  );
+}
+
+function AiConnectionStat({ label, value, tone }: { label: string; value: string; tone: "live" | "waiting" }) {
+  return (
+    <div className={`rounded-lg border p-3 ${tone === "live" ? "border-emerald-200/[0.16] bg-emerald-300/[0.055]" : "border-amber/[0.16] bg-amber/[0.04]"}`}>
+      <div className={`text-xs uppercase tracking-[0.18em] ${tone === "live" ? "text-emerald-100/56" : "text-amber/62"}`}>{label}</div>
+      <div className="mt-2 truncate text-sm font-semibold text-foreground">{value}</div>
     </div>
   );
 }
