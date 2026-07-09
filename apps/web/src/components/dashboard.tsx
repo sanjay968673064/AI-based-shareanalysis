@@ -19,6 +19,7 @@ import {
   CircuitBoard,
   Database,
   DatabaseZap,
+  Download,
   FileText,
   Fingerprint,
   Gauge,
@@ -86,8 +87,9 @@ type ReportAction = {
   reason: string;
   timing: string;
 };
-type ReportSection = "summary" | "actions" | "analytics" | "quality" | "calendar";
+type ReportSection = "summary" | "actions" | "analytics" | "quality" | "calendar" | "download";
 type OverviewTileId = "pulse" | "capital" | "performance" | "sync";
+type ReportPeriod = "day" | "week" | "month" | "sixMonth" | "oneYear";
 type AiProvider = "gemini" | "openai";
 type InvestorRiskProfile = "conservative" | "balanced" | "aggressive";
 type InvestorHorizon = "short" | "swing" | "long";
@@ -571,6 +573,8 @@ export function Dashboard() {
               ) : view === "discover" ? (
                 <StockDiscoveryView
                   discovery={discovery}
+                  analytics={analytics}
+                  aiInsight={aiInsight}
                   isLoading={isFetchingDiscovery}
                   onRefresh={async () => {
                     await refetchDiscovery();
@@ -589,9 +593,9 @@ export function Dashboard() {
                   onRefresh={handleAnalyze}
                 />
               ) : view === "overview" ? (
-                <PortfolioOverview data={data} intelligence={intelligence} onAnalyze={handleAnalyze} />
+                <PortfolioOverview data={data} intelligence={intelligence} analytics={analytics} aiInsight={aiInsight} onAnalyze={handleAnalyze} />
               ) : (
-                <PortfolioRisk data={data} intelligence={intelligence} />
+                <PortfolioRisk data={data} intelligence={intelligence} analytics={analytics} aiInsight={aiInsight} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -698,10 +702,14 @@ export function Dashboard() {
 function PortfolioOverview({
   data,
   intelligence,
+  analytics,
+  aiInsight,
   onAnalyze
 }: {
   data: PortfolioSummary;
   intelligence?: PortfolioIntelligence;
+  analytics?: PortfolioAnalytics;
+  aiInsight: AiAnalyticsInsight | null;
   onAnalyze: () => void;
 }) {
   const topHoldings = [...data.holdings].sort((a, b) => b.allocationPct - a.allocationPct);
@@ -763,6 +771,13 @@ function PortfolioOverview({
 
   return (
     <div className="overflow-hidden rounded-lg border border-cyan-200/14 bg-[#081214] shadow-[0_28px_90px_rgba(45,212,191,0.14)]">
+      <AnalyticsBrainBoard
+        context="Overview"
+        analytics={analytics}
+        aiInsight={aiInsight}
+        intelligence={intelligence}
+        portfolioHealth={data.healthScore}
+      />
       <div className="border-b border-cyan-200/14 bg-[radial-gradient(circle_at_20%_0%,rgba(45,212,191,0.24),transparent_34%),linear-gradient(135deg,rgba(15,23,42,0.92),rgba(8,18,20,0.96))] p-4">
         <div className="grid gap-4 xl:grid-cols-[1.25fr_0.75fr]">
           <div className="min-h-[230px] rounded-md border border-cyan-200/14 bg-black/20 p-5">
@@ -1448,6 +1463,261 @@ function AiConnectionStat({
   );
 }
 
+type AnalyticsBrainTile = "engine" | "ai" | "actions" | "risk" | "data";
+
+function AnalyticsBrainBoard({
+  context,
+  analytics,
+  aiInsight,
+  intelligence,
+  portfolioHealth
+}: {
+  context: string;
+  analytics?: PortfolioAnalytics;
+  aiInsight: AiAnalyticsInsight | null;
+  intelligence?: PortfolioIntelligence;
+  portfolioHealth?: number;
+}) {
+  const [activeTile, setActiveTile] = useState<AnalyticsBrainTile>("engine");
+  const decisionRows = buildHoldingDecisionRows(analytics);
+  const addCount = decisionRows.filter((row) => row.action === "Add").length;
+  const holdCount = decisionRows.filter((row) => row.action === "Hold").length;
+  const reviewCount = decisionRows.filter((row) => row.action === "Review").length;
+  const sanityIssueCount = analytics?.sanityChecks.filter((check) => check.status !== "pass").length ?? 0;
+  const highRiskCount = intelligence?.alerts.filter((alert) => alert.severity === "high").length ?? 0;
+  const aiReady = Boolean(aiInsight?.configured && aiInsight.summary);
+  const engineQuality = analytics?.dataQualityScore ?? intelligence?.dataQuality.score ?? 0;
+  const brainStatus = engineQuality >= 75 && aiReady ? "Decision-ready" : engineQuality >= 55 ? "Verify first" : "Needs data";
+  const tiles: Array<{
+    id: AnalyticsBrainTile;
+    label: string;
+    value: string;
+    detail: string;
+    icon: React.ReactNode;
+    tone: string;
+  }> = [
+    {
+      id: "engine",
+      label: "Analytics Engine",
+      value: analytics ? `${engineQuality}/100` : "Pending",
+      detail: analytics ? `${analytics.companies.length} companies scored` : "Run Full Analytics to build engine data",
+      icon: <CircuitBoard size={18} />,
+      tone: "from-cyan-300/18 to-teal-300/8"
+    },
+    {
+      id: "ai",
+      label: "AI Engine",
+      value: aiReady ? "Online" : "Waiting",
+      detail: aiReady ? "AI explains deterministic evidence" : "AI output unlocks after validated analytics",
+      icon: <BrainCircuit size={18} />,
+      tone: "from-violet-300/18 to-cyan-300/8"
+    },
+    {
+      id: "actions",
+      label: "Decision Mix",
+      value: `${addCount}/${holdCount}/${reviewCount}`,
+      detail: "Add, hold, review from weighted scoring",
+      icon: <Target size={18} />,
+      tone: "from-emerald-300/16 to-cyan-300/8"
+    },
+    {
+      id: "risk",
+      label: "Risk Gate",
+      value: highRiskCount ? `${highRiskCount} high` : `${portfolioHealth ?? 0}/100`,
+      detail: highRiskCount ? "High severity alerts need action" : "Portfolio health and risk checks",
+      icon: <ShieldCheck size={18} />,
+      tone: "from-rose-300/16 to-amber/8"
+    },
+    {
+      id: "data",
+      label: "Data Sanity",
+      value: sanityIssueCount ? `${sanityIssueCount} watch` : "Clean",
+      detail: "Validation, source and sanity status",
+      icon: <DatabaseZap size={18} />,
+      tone: "from-sky-300/18 to-white/5"
+    }
+  ];
+
+  return (
+    <section className="border-b border-cyan-200/10 bg-black/24 p-4">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mb-1 flex items-center gap-2 text-sm text-cyan-100">
+            <Orbit size={17} />
+            Analytics brain for {context}
+          </div>
+          <h3 className="text-lg font-semibold tracking-normal">One engine drives this section</h3>
+          <p className="mt-1 max-w-4xl text-sm leading-6 text-cyan-50/66">
+            Every tile below reads from the deterministic analytics engine first, then AI explains the validated evidence. Click any tile to expand the data behind this screen.
+          </p>
+        </div>
+        <span className={`rounded-md border px-3 py-2 text-sm font-medium ${
+          brainStatus === "Decision-ready"
+            ? "border-profit/24 bg-profit/10 text-profit"
+            : brainStatus === "Verify first"
+              ? "border-amber/24 bg-amber/10 text-amber"
+              : "border-loss/24 bg-loss/10 text-loss"
+        }`}>
+          {brainStatus}
+        </span>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {tiles.map((tile) => (
+          <button
+            key={tile.id}
+            type="button"
+            onClick={() => setActiveTile(tile.id)}
+            className={`rounded-lg border bg-gradient-to-br p-3 text-left transition duration-300 hover:-translate-y-1 ${
+              activeTile === tile.id
+                ? "border-cyan-100/50 shadow-[0_0_34px_rgba(34,211,238,0.18)]"
+                : "border-white/10 hover:border-cyan-200/28"
+            } ${tile.tone}`}
+          >
+            <div className="mb-3 flex items-center justify-between gap-3 text-cyan-100">
+              <span className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-black/24">{tile.icon}</span>
+              <span className="text-xs text-current/70">expand</span>
+            </div>
+            <div className="text-xs uppercase tracking-[0.16em] text-muted">{tile.label}</div>
+            <div className="mt-1 text-xl font-semibold text-foreground">{tile.value}</div>
+            <div className="mt-1 text-xs leading-5 text-muted">{tile.detail}</div>
+          </button>
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeTile}
+          initial={{ opacity: 0, y: 12, filter: "blur(6px)" }}
+          animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+          exit={{ opacity: 0, y: -8, filter: "blur(4px)" }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          className="mt-3 rounded-lg border border-cyan-200/12 bg-black/22 p-4"
+        >
+          <AnalyticsBrainDetail
+            tile={activeTile}
+            analytics={analytics}
+            aiInsight={aiInsight}
+            intelligence={intelligence}
+            decisionRows={decisionRows}
+          />
+        </motion.div>
+      </AnimatePresence>
+    </section>
+  );
+}
+
+function AnalyticsBrainDetail({
+  tile,
+  analytics,
+  aiInsight,
+  intelligence,
+  decisionRows
+}: {
+  tile: AnalyticsBrainTile;
+  analytics?: PortfolioAnalytics;
+  aiInsight: AiAnalyticsInsight | null;
+  intelligence?: PortfolioIntelligence;
+  decisionRows: HoldingDecisionRow[];
+}) {
+  if (tile === "ai") {
+    return (
+      <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-violet-100">
+            <Sparkles size={18} />
+            <h4 className="text-base font-semibold text-foreground">AI interpretation</h4>
+          </div>
+          <AiFormattedText
+            text={aiInsight?.summary ?? "AI insight is not available yet. Run Full Analytics after configuring AI so the model can explain the deterministic engine output."}
+            className="text-sm leading-6 text-foreground/84"
+          />
+        </div>
+        <div className="grid gap-2">
+          <ReportFact label="Provider" value={aiInsight?.provider ? providerLabel(aiInsight.provider) : "Pending"} />
+          <ReportFact label="Model" value={aiInsight?.model ?? "Pending"} />
+        </div>
+      </div>
+    );
+  }
+
+  if (tile === "actions") {
+    return (
+      <div className="grid gap-3 xl:grid-cols-3">
+        {decisionRows.slice(0, 6).map((row) => (
+          <div key={row.symbol} className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="font-medium">{row.symbol}</span>
+              <span className={`rounded-md border px-2 py-1 text-xs ${decisionBadgeTone(row.action)}`}>{row.action}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <DecisionMiniStat label="Score" value={`${row.score}`} tone={scoreTone(row.score)} />
+              <DecisionMiniStat label="Conviction" value={`${row.conviction}`} tone={scoreTone(row.conviction)} />
+              <DecisionMiniStat label="Confidence" value={`${row.confidence}`} tone={scoreTone(row.confidence)} />
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted">{row.reason}</p>
+            <div className="mt-2 rounded-md border border-white/10 bg-white/[0.035] p-2 text-xs leading-5 text-muted">
+              Entry: {row.entryDiscipline}
+            </div>
+            <div className="mt-2 rounded-md border border-white/10 bg-white/[0.035] p-2 text-xs leading-5 text-muted">
+              Exit guard: {row.exitGuard}
+            </div>
+          </div>
+        ))}
+        {!decisionRows.length ? <div className="text-sm text-muted">No decision rows yet. Run Full Analytics first.</div> : null}
+      </div>
+    );
+  }
+
+  if (tile === "risk") {
+    const alerts = intelligence?.alerts ?? [];
+    return (
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <ReportFact label="Alerts" value={`${alerts.length}`} tone={alerts.length ? "text-amber" : "text-profit"} />
+        <ReportFact label="High severity" value={`${alerts.filter((item) => item.severity === "high").length}`} tone="text-loss" />
+        <ReportFact label="Risk reviews" value={`${decisionRows.filter((row) => row.action === "Review").length}`} tone="text-amber" />
+        <ReportFact label="Data quality" value={`${analytics?.dataQualityScore ?? intelligence?.dataQuality.score ?? 0}/100`} />
+      </div>
+    );
+  }
+
+  if (tile === "data") {
+    return (
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {(analytics?.sanityChecks.length ? analytics.sanityChecks : [{ label: "Analytics", status: "watch" as const, detail: "Run Full Analytics to calculate validation checks." }]).map((check) => (
+          <div key={check.label} className="rounded-md border border-white/10 bg-white/[0.035] p-3">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{check.label}</span>
+              <span className={sanityTone(check.status)}>{check.status}</span>
+            </div>
+            <p className="text-xs leading-5 text-muted">{check.detail}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-3 xl:grid-cols-[1.1fr_0.9fr]">
+      <div>
+        <div className="mb-2 flex items-center gap-2 text-cyan-100">
+          <CircuitBoard size={18} />
+          <h4 className="text-base font-semibold text-foreground">Deterministic engine output</h4>
+        </div>
+        <p className="text-sm leading-6 text-foreground/84">
+          {analytics?.summary ?? "No analytics summary yet. Run Full Analytics to refresh market data, validation, scoring and decision signals."}
+        </p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <ReportFact label="Companies" value={`${analytics?.companies.length ?? 0}`} />
+        <ReportFact label="Model" value={analytics?.modelVersion ?? "Pending"} />
+        <ReportFact label="Quality" value={`${analytics?.dataQualityScore ?? 0}/100`} tone={scoreTone(analytics?.dataQualityScore ?? 0)} />
+        <ReportFact label="Next refresh" value={analytics ? formatShortDateTime(analytics.nextRefreshAt) : "Pending"} />
+      </div>
+    </div>
+  );
+}
+
 type UnifiedAnalyticsTileId = "engine" | "ai" | "pipeline" | "companies" | "signals" | "warnings";
 
 function UnifiedAnalyticsWorkspace({
@@ -1830,6 +2100,7 @@ function UnifiedAnalyticsDetail({
                 <p className="mt-3 text-sm leading-6 text-cyan-50/72">{selectedCompany.explanation}</p>
               ) : null}
             </div>
+            <RecommendationEvidencePanel company={selectedCompany} />
             <div className="mt-4 grid gap-4 xl:grid-cols-2">
               <SignalPanel title="Business strengths" items={selectedCompany.strengths} tone="text-profit" />
               <SignalPanel title="Risks and review concerns" items={selectedCompany.risks?.length ? selectedCompany.risks : selectedCompany.concerns} tone="text-amber" />
@@ -1952,12 +2223,76 @@ function UnifiedAnalyticsDetail({
   );
 }
 
+function RecommendationEvidencePanel({ company }: { company: CompanyAnalytics }) {
+  const finalScore = company.finalScore ?? company.overallScore;
+  const scoreItems = [
+    ["Fundamental", company.fundamentalScore ?? company.overallScore, "40% weight: business quality, growth, balance sheet and cash flow."],
+    ["Technical", company.technicalScore ?? 50, "20% weight: price trend, momentum and volatility context."],
+    ["Valuation", company.valuationScore, "10% weight: price position, fair value comfort and upside/downside discipline."],
+    ["Risk", company.riskScore ?? 50, "10% weight: volatility, leverage and downside control."],
+    ["Governance", company.governanceScore ?? 50, "5% weight: available corporate-governance proxy data."],
+    ["Sector", company.sectorScore ?? 50, "5% weight: sector context and relative strength proxy."],
+    ["News", company.newsScore ?? 50, "5% weight: provider news coverage and event flow."],
+    ["Sentiment", company.sentimentScore ?? 50, "5% weight: headline sentiment and AI-readable context."]
+  ] as const;
+
+  return (
+    <section className="mt-4 rounded-md border border-cyan-200/14 bg-[linear-gradient(135deg,rgba(34,211,238,0.10),rgba(16,185,129,0.07),rgba(0,0,0,0.24))] p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-cyan-100">
+            <Fingerprint size={18} />
+            <h4 className="text-base font-semibold text-foreground">Why this recommendation?</h4>
+          </div>
+          <p className="max-w-3xl text-sm leading-6 text-cyan-50/70">
+            {company.recommendation} is based on a weighted multi-factor score, not a single indicator. The panel below shows which parameters helped, which reduced the score, and what must be verified.
+          </p>
+        </div>
+        <div className="rounded-md border border-cyan-200/18 bg-black/28 px-3 py-2 text-right">
+          <div className="text-xs text-muted">Final score</div>
+          <div className={`text-2xl font-semibold ${scoreTone(finalScore)}`}>{finalScore}/100</div>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {scoreItems.map(([label, value, detail]) => (
+          <div key={label} className="rounded-md border border-white/10 bg-black/22 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{label}</span>
+              <span className={scoreTone(value)}>{value}</span>
+            </div>
+            <ProgressRail percent={value} tone={value >= 72 ? "green" : value >= 52 ? "amber" : "rose"} />
+            <p className="mt-2 text-xs leading-5 text-muted">{detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+        <SignalPanel title="Why buy or add" items={company.strengths.length ? company.strengths : ["No buy-positive factor is strong enough yet."]} tone="text-profit" />
+        <SignalPanel title="Why hold or wait" items={[company.investmentHorizon ?? "Review after next earnings cycle.", company.planning]} tone="text-amber" />
+        <SignalPanel title="Why sell, reduce or review" items={company.risks?.length ? company.risks : company.concerns} tone="text-loss" />
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <ReportFact label="Intrinsic value" value={company.intrinsicValue != null ? formatCurrency(company.intrinsicValue) : "N/A"} />
+        <ReportFact label="Fair value" value={company.fairValue != null ? formatCurrency(company.fairValue) : "N/A"} />
+        <ReportFact label="Expected upside" value={company.expectedUpside != null ? `${company.expectedUpside.toFixed(1)}%` : "N/A"} tone={(company.expectedUpside ?? 0) >= 0 ? "text-profit" : "text-loss"} />
+        <ReportFact label="Confidence" value={`${company.confidence ?? 0}/100`} tone={scoreTone(company.confidence ?? 0)} />
+      </div>
+    </section>
+  );
+}
+
 function StockDiscoveryView({
   discovery,
+  analytics,
+  aiInsight,
   isLoading,
   onRefresh
 }: {
   discovery?: StockDiscovery;
+  analytics?: PortfolioAnalytics;
+  aiInsight: AiAnalyticsInsight | null;
   isLoading: boolean;
   onRefresh: () => Promise<void>;
 }) {
@@ -2012,6 +2347,12 @@ function StockDiscoveryView({
 
   return (
     <div className="overflow-hidden rounded-lg border border-sky-200/14 bg-[#07111d] shadow-[0_28px_90px_rgba(14,165,233,0.16)]">
+      <AnalyticsBrainBoard
+        context="Discovery"
+        analytics={analytics}
+        aiInsight={aiInsight}
+        portfolioHealth={discovery?.candidates.length ? Math.round(discovery.candidates.reduce((sum, item) => sum + item.discoveryScore, 0) / discovery.candidates.length) : undefined}
+      />
       <div className="relative border-b border-sky-200/14 bg-[radial-gradient(circle_at_10%_0%,rgba(14,165,233,0.28),transparent_34%),linear-gradient(135deg,rgba(12,74,110,0.42),rgba(7,17,29,0.96))] p-4">
         <div className="market-scanline" />
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -2171,6 +2512,8 @@ function StockDiscoveryView({
                 <AdvancedDiscoveryScore label="Quality" value={selected.qualityScore} />
               </div>
 
+              <DiscoveryParameterRationale candidate={selected} />
+
               <div className="rounded-md border border-sky-200/12 bg-black/24 p-4">
                 <div className="mb-2 text-sm font-semibold text-sky-100">AI + research decision view</div>
                 <p className="text-sm leading-6 text-foreground/84">{selected.researchView}</p>
@@ -2293,12 +2636,70 @@ function AdvancedDiscoveryScore({ label, value }: { label: string; value: number
   );
 }
 
+function DiscoveryParameterRationale({ candidate }: { candidate: StockDiscovery["candidates"][number] }) {
+  const rows = [
+    {
+      label: "Fundamental",
+      value: candidate.fundamentalScore,
+      basis: "Business quality, growth, balance sheet and earnings strength.",
+      why: candidate.fundamentalScore >= 72 ? "Core company quality is supporting the idea." : candidate.fundamentalScore >= 52 ? "Fundamentals are acceptable but need verification." : "Fundamentals are weak; treat as high caution."
+    },
+    {
+      label: "Technical",
+      value: candidate.technicalScore,
+      basis: "Trend, momentum and price-action context.",
+      why: candidate.technicalScore >= 72 ? "Trend support is strong enough for a staged watchlist entry." : candidate.technicalScore >= 52 ? "Trend is mixed; wait for confirmation." : "Technical setup is not supportive yet."
+    },
+    {
+      label: "Valuation",
+      value: candidate.valuationScore,
+      basis: "Price comfort, valuation stretch and reward/risk room.",
+      why: candidate.valuationScore >= 72 ? "Valuation has enough comfort for further research." : candidate.valuationScore >= 52 ? "Valuation is reasonable but not cheap." : "Valuation is stretched, so entry discipline matters."
+    },
+    {
+      label: "Quality",
+      value: candidate.qualityScore,
+      basis: "Data quality, source coverage and confidence penalties.",
+      why: candidate.qualityScore >= 72 ? "Provider coverage is good enough for decision support." : candidate.qualityScore >= 52 ? "Data is usable with checks." : "Data quality is low; verify before acting."
+    }
+  ];
+
+  return (
+    <section className="mb-4 rounded-md border border-cyan-200/14 bg-cyan-300/[0.055] p-4">
+      <div className="mb-3 flex items-center gap-2 text-cyan-100">
+        <Fingerprint size={18} />
+        <h4 className="text-base font-semibold text-foreground">Why is this share suggested?</h4>
+      </div>
+      <div className="grid gap-3 xl:grid-cols-4">
+        {rows.map((row) => (
+          <div key={row.label} className="rounded-md border border-white/10 bg-black/22 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{row.label}</span>
+              <span className={scoreTone(row.value)}>{row.value}/100</span>
+            </div>
+            <ProgressRail percent={row.value} tone={row.value >= 72 ? "green" : row.value >= 52 ? "amber" : "rose"} />
+            <p className="mt-2 text-xs leading-5 text-muted">{row.basis}</p>
+            <p className="mt-2 text-sm leading-5 text-foreground/82">{row.why}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 rounded-md border border-white/10 bg-black/24 p-3 text-sm leading-6 text-cyan-50/76">
+        Suggested because discovery score is {candidate.discoveryScore}/100 with {candidate.conviction.toLowerCase()} conviction. This is a research shortlist, not an automatic buy order.
+      </div>
+    </section>
+  );
+}
+
 function PortfolioRisk({
   data,
-  intelligence
+  intelligence,
+  analytics,
+  aiInsight
 }: {
   data: PortfolioSummary;
   intelligence?: PortfolioIntelligence;
+  analytics?: PortfolioAnalytics;
+  aiInsight: AiAnalyticsInsight | null;
 }) {
   const [stressPct, setStressPct] = useState(-12);
   const [selectedSymbol, setSelectedSymbol] = useState(data.holdings[0]?.symbol ?? "");
@@ -2315,6 +2716,13 @@ function PortfolioRisk({
 
   return (
     <div className="overflow-hidden rounded-lg border border-rose-300/14 bg-[#120E13] shadow-[0_24px_80px_rgba(251,113,133,0.13)]">
+      <AnalyticsBrainBoard
+        context="Risk"
+        analytics={analytics}
+        aiInsight={aiInsight}
+        intelligence={intelligence}
+        portfolioHealth={data.healthScore}
+      />
       <div className="border-b border-rose-300/14 bg-[linear-gradient(135deg,rgba(251,113,133,0.18),rgba(251,191,36,0.10),rgba(56,189,248,0.06))] p-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -2528,7 +2936,8 @@ function PortfolioReport({
     ["actions", ListChecks, "Actions", "What to do next"],
     ["analytics", Bot, "AI + Analytics", "Combined report"],
     ["quality", Search, "Quality", "Data and method"],
-    ["calendar", CalendarClock, "Calendar", "Review rhythm"]
+    ["calendar", CalendarClock, "Calendar", "Review rhythm"],
+    ["download", Download, "Download", "P&L and tax"]
   ];
   const averageConfidence =
     intelligence?.recommendations.length
@@ -2541,6 +2950,13 @@ function PortfolioReport({
   return (
     <>
       <div className="overflow-hidden rounded-lg border border-violet-200/14 bg-[#100F1A] shadow-[0_28px_90px_rgba(167,139,250,0.15)]">
+        <AnalyticsBrainBoard
+          context="Reports"
+          analytics={analytics}
+          aiInsight={aiInsight}
+          intelligence={intelligence}
+          portfolioHealth={data.healthScore}
+        />
         <div className="border-b border-violet-200/14 bg-[radial-gradient(circle_at_82%_0%,rgba(251,191,36,0.18),transparent_32%),linear-gradient(135deg,rgba(167,139,250,0.20),rgba(17,16,26,0.96))] p-4">
           <div className="flex flex-wrap items-start justify-between gap-5">
             <div className="max-w-3xl">
@@ -2595,7 +3011,7 @@ function PortfolioReport({
           />
         </div>
 
-        <div className="grid gap-2 border-b border-violet-200/10 bg-black/20 p-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="grid gap-2 border-b border-violet-200/10 bg-black/20 p-3 md:grid-cols-2 xl:grid-cols-6">
           {reportTabs.map(([id, Icon, label, detail]) => (
             <button
               key={id}
@@ -2853,10 +3269,18 @@ function PortfolioReport({
                             <DecisionMiniStat label="Conf." value={`${row.confidence}`} tone={scoreTone(row.confidence)} />
                           </div>
                           <p className="text-sm leading-5 text-foreground/82">{row.reason}</p>
+                          <div className="mt-3 rounded-md border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-muted">
+                            Entry: {row.entryDiscipline}
+                          </div>
                           {reportMode === "deep" ? (
-                            <p className="mt-3 rounded-md border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-muted">
-                              {row.entryDiscipline}
-                            </p>
+                            <div className="mt-2 grid gap-2">
+                              <p className="rounded-md border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-muted">
+                                Exit guard: {row.exitGuard}
+                              </p>
+                              <p className="rounded-md border border-white/10 bg-white/[0.04] p-2 text-xs leading-5 text-muted">
+                                Risk flags: {row.riskFlags.join(" | ")}
+                              </p>
+                            </div>
                           ) : null}
                         </div>
                       ))}
@@ -2979,6 +3403,17 @@ function PortfolioReport({
                 </section>
               </ReportSectionShell>
             ) : null}
+
+            {section === "download" ? (
+              <ReportSectionShell key="download">
+                <DownloadableReportPanel
+                  data={data}
+                  analytics={analytics}
+                  intelligence={intelligence}
+                  aiInsight={aiInsight}
+                />
+              </ReportSectionShell>
+            ) : null}
           </AnimatePresence>
         </div>
       </div>
@@ -3034,6 +3469,8 @@ type HoldingDecisionRow = {
   conviction: number;
   reason: string;
   entryDiscipline: string;
+  exitGuard: string;
+  riskFlags: string[];
   rank: number;
 };
 
@@ -3053,6 +3490,8 @@ function buildHoldingDecisionRows(analytics?: PortfolioAnalytics): HoldingDecisi
       conviction: signal.convictionScore,
       reason: signal.reasoning,
       entryDiscipline: signal.entryDiscipline,
+      exitGuard: signal.exitGuard,
+      riskFlags: signal.riskFlags,
       rank: signal.convictionScore
     };
   });
@@ -3626,6 +4065,120 @@ function OverviewTile({
   );
 }
 
+function DownloadableReportPanel({
+  data,
+  analytics,
+  intelligence,
+  aiInsight
+}: {
+  data: PortfolioSummary;
+  analytics?: PortfolioAnalytics;
+  intelligence?: PortfolioIntelligence;
+  aiInsight: AiAnalyticsInsight | null;
+}) {
+  const [selectedPeriods, setSelectedPeriods] = useState<Record<ReportPeriod, boolean>>({
+    day: true,
+    week: true,
+    month: true,
+    sixMonth: false,
+    oneYear: false
+  });
+  const [includeTax, setIncludeTax] = useState(true);
+  const selectedCount = REPORT_PERIODS.filter((period) => selectedPeriods[period.id]).length;
+
+  function togglePeriod(period: ReportPeriod) {
+    setSelectedPeriods((current) => ({ ...current, [period]: !current[period] }));
+  }
+
+  function handleDownload() {
+    const periods = REPORT_PERIODS.filter((period) => selectedPeriods[period.id]).map((period) => period.id);
+    const rows = buildPortfolioReportRows({
+      data,
+      analytics,
+      intelligence,
+      aiInsight,
+      periods,
+      includeTax
+    });
+    downloadCsv(`portfolio-report-${new Date().toISOString().slice(0, 10)}.csv`, rows);
+  }
+
+  return (
+    <section className="rounded-md border border-violet-200/12 bg-white/[0.045] p-5">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-violet-100">
+            <Download size={18} />
+            <h3 className="text-base font-semibold text-foreground">Download report</h3>
+          </div>
+          <p className="max-w-3xl text-sm leading-6 text-violet-50/70">
+            Choose the P&L periods you need and optionally include a tax-review sheet. Day P&L is live from holdings; longer periods are marked as snapshot-based until broker transaction history is connected.
+          </p>
+        </div>
+        <Button type="button" onClick={handleDownload} disabled={selectedCount === 0 && !includeTax}>
+          <Download size={18} />
+          Download CSV
+        </Button>
+      </div>
+
+      <div className="grid gap-3 xl:grid-cols-[1fr_0.85fr]">
+        <div className="rounded-md border border-violet-200/12 bg-black/22 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+            <LineChart className="text-profit" size={18} />
+            P&L periods
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {REPORT_PERIODS.map((period) => (
+              <button
+                key={period.id}
+                type="button"
+                onClick={() => togglePeriod(period.id)}
+                className={`rounded-md border p-3 text-left transition ${
+                  selectedPeriods[period.id]
+                    ? "border-violet-200/45 bg-violet-300/12"
+                    : "border-white/10 bg-white/[0.035] hover:border-violet-200/24"
+                }`}
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium">{period.label}</span>
+                  {selectedPeriods[period.id] ? <CheckCircle2 size={16} className="text-profit" /> : <CircleDollarSign size={16} className="text-muted" />}
+                </div>
+                <p className="text-xs leading-5 text-muted">{period.detail}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-md border border-violet-200/12 bg-black/22 p-4">
+          <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+            <FileText className="text-amber" size={18} />
+            Tax report
+          </div>
+          <button
+            type="button"
+            onClick={() => setIncludeTax((current) => !current)}
+            className={`w-full rounded-md border p-3 text-left transition ${
+              includeTax ? "border-amber/35 bg-amber/10" : "border-white/10 bg-white/[0.035] hover:border-amber/24"
+            }`}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">Include tax review sheet</span>
+              {includeTax ? <CheckCircle2 size={16} className="text-amber" /> : <CircleDollarSign size={16} className="text-muted" />}
+            </div>
+            <p className="text-xs leading-5 text-muted">
+              Exports unrealized gain/loss, taxable review flags and missing data notes. It does not apply live tax rates or replace CA review.
+            </p>
+          </button>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <ReportFact label="Holdings" value={`${data.holdings.length}`} />
+            <ReportFact label="Open P&L" value={formatCurrency(data.totalPnl)} tone={data.totalPnl >= 0 ? "text-profit" : "text-loss"} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ReportSectionShell({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
@@ -3986,6 +4539,158 @@ function riskPill(riskLevel: string) {
     return "border-amber/30 bg-amber/10 text-amber";
   }
   return "border-profit/30 bg-profit/10 text-profit";
+}
+
+const REPORT_PERIODS: Array<{ id: ReportPeriod; label: string; detail: string }> = [
+  { id: "day", label: "Per day", detail: "Actual day P&L from the current holdings feed." },
+  { id: "week", label: "Per week", detail: "Snapshot export until weekly history is available." },
+  { id: "month", label: "Per month", detail: "Snapshot export until monthly broker history is available." },
+  { id: "sixMonth", label: "6 months", detail: "Current open P&L basis; realized history needs transactions." },
+  { id: "oneYear", label: "1 year", detail: "Current open P&L basis; annual history needs transactions." }
+];
+
+function buildPortfolioReportRows({
+  data,
+  analytics,
+  intelligence,
+  aiInsight,
+  periods,
+  includeTax
+}: {
+  data: PortfolioSummary;
+  analytics?: PortfolioAnalytics;
+  intelligence?: PortfolioIntelligence;
+  aiInsight: AiAnalyticsInsight | null;
+  periods: ReportPeriod[];
+  includeTax: boolean;
+}) {
+  const rows: Array<Record<string, string | number>> = [];
+  const recommendationMap = new Map((intelligence?.recommendations ?? []).map((item) => [item.symbol, item]));
+  const companyMap = new Map((analytics?.companies ?? []).map((item) => [item.symbol, item]));
+
+  rows.push({
+    Section: "Summary",
+    Period: "Current",
+    Symbol: "PORTFOLIO",
+    Metric: "Portfolio value",
+    Value: data.portfolioValue.toFixed(2),
+    "Data Basis": "Current holdings",
+    Notes: data.aiSummary
+  });
+
+  for (const period of periods) {
+    const periodMeta = REPORT_PERIODS.find((item) => item.id === period);
+    const actualDay = period === "day";
+    rows.push({
+      Section: "P&L",
+      Period: periodMeta?.label ?? period,
+      Symbol: "PORTFOLIO",
+      Metric: actualDay ? "Actual day P&L" : "Open P&L snapshot",
+      Value: (actualDay ? data.dayPnl : data.totalPnl).toFixed(2),
+      "Data Basis": actualDay ? "Broker/current holdings day P&L" : "Current open P&L snapshot; not realized historical period P&L",
+      Notes: actualDay ? `${data.dayPnlPct.toFixed(2)}% day return` : "Exact weekly/monthly/6M/1Y P&L requires broker transactions and stored daily snapshots."
+    });
+
+    for (const holding of data.holdings) {
+      rows.push({
+        Section: "P&L",
+        Period: periodMeta?.label ?? period,
+        Symbol: holding.symbol,
+        Metric: actualDay ? "Holding day P&L" : "Holding open P&L snapshot",
+        Value: (actualDay ? holding.dayPnl : holding.totalPnl).toFixed(2),
+        "Data Basis": actualDay ? "Current holdings day P&L" : "Current holdings open P&L",
+        Notes: `${holding.companyName}; allocation ${holding.allocationPct.toFixed(2)}%`
+      });
+    }
+  }
+
+  for (const holding of data.holdings) {
+    const recommendation = recommendationMap.get(holding.symbol);
+    const company = companyMap.get(holding.symbol);
+    rows.push({
+      Section: "Recommendation",
+      Period: "Current",
+      Symbol: holding.symbol,
+      Metric: company?.recommendation ?? recommendation?.recommendation ?? "Review",
+      Value: company?.finalScore ?? company?.overallScore ?? recommendation?.confidenceScore ?? "",
+      "Data Basis": company ? "Deterministic analytics engine" : recommendation ? "Portfolio intelligence engine" : "Fallback holdings context",
+      Notes: company?.explanation ?? recommendation?.reasoning ?? "Run Full Analytics for detailed scoring evidence."
+    });
+    rows.push({
+      Section: "Recommendation Evidence",
+      Period: "Current",
+      Symbol: holding.symbol,
+      Metric: "Why",
+      Value: "",
+      "Data Basis": "Analytics and AI evidence",
+      Notes: [
+        ...(company?.strengths ?? recommendation?.bullishFactors ?? []).slice(0, 2),
+        ...(company?.risks ?? recommendation?.keyRisks ?? []).slice(0, 2)
+      ].join(" | ")
+    });
+  }
+
+  if (aiInsight?.summary) {
+    rows.push({
+      Section: "AI",
+      Period: "Current",
+      Symbol: "PORTFOLIO",
+      Metric: "AI summary",
+      Value: "",
+      "Data Basis": "AI engine after deterministic analytics",
+      Notes: aiInsight.summary
+    });
+  }
+
+  if (includeTax) {
+    rows.push({
+      Section: "Tax",
+      Period: "Current",
+      Symbol: "PORTFOLIO",
+      Metric: "Tax report basis",
+      Value: "",
+      "Data Basis": "Current holdings only",
+      Notes: "This export flags unrealized gains/losses. Exact STCG/LTCG, grandfathering, exemptions and set-off require trade dates, contract notes and current tax rules."
+    });
+    for (const holding of data.holdings) {
+      rows.push({
+        Section: "Tax",
+        Period: "Current",
+        Symbol: holding.symbol,
+        Metric: holding.totalPnl >= 0 ? "Unrealized gain review" : "Unrealized loss review",
+        Value: holding.totalPnl.toFixed(2),
+        "Data Basis": "Average cost and current price from holdings",
+        Notes: "Holding period and realized tax cannot be calculated without buy/sell lot dates. Use as CA review input, not tax filing output."
+      });
+    }
+  }
+
+  return rows;
+}
+
+function downloadCsv(filename: string, rows: Array<Record<string, string | number>>) {
+  const headers = rows.length ? Object.keys(rows[0]) : ["Section", "Period", "Symbol", "Metric", "Value", "Data Basis", "Notes"];
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => csvCell(row[header] ?? "")).join(","))
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+function csvCell(value: string | number) {
+  const text = String(value);
+  if (/[",\n]/.test(text)) {
+    return `"${text.replaceAll("\"", "\"\"")}"`;
+  }
+  return text;
 }
 
 function buildReportActions(data: PortfolioSummary, intelligence?: PortfolioIntelligence): ReportAction[] {
